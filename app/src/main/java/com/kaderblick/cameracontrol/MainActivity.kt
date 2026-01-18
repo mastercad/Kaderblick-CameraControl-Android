@@ -124,7 +124,7 @@ class MainActivity : AppCompatActivity() {
         val ipAddress = binding.cameraIpInput.text.toString().trim()
         
         if (ipAddress.isEmpty()) {
-            Toast.makeText(this, "Please enter camera IP address", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.enter_ip_address), Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -142,7 +142,7 @@ class MainActivity : AppCompatActivity() {
                     binding.connectButton.text = getString(R.string.disconnect)
                     binding.connectButton.isEnabled = true
                     enableControls(true)
-                    Toast.makeText(this@MainActivity, "Connected successfully", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, getString(R.string.connected_successfully), Toast.LENGTH_SHORT).show()
                 }
             }
 
@@ -166,7 +166,7 @@ class MainActivity : AppCompatActivity() {
         binding.statusText.text = getString(R.string.status_disconnected)
         binding.connectButton.text = getString(R.string.connect)
         enableControls(false)
-        Toast.makeText(this, "Disconnected", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, getString(R.string.disconnected_message), Toast.LENGTH_SHORT).show()
     }
 
     private fun enableControls(enabled: Boolean) {
@@ -186,7 +186,7 @@ class MainActivity : AppCompatActivity() {
         cameraController.capturePhoto { success, message ->
             runOnUiThread {
                 if (success) {
-                    Toast.makeText(this, "Photo captured locally", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, getString(R.string.photo_captured_locally), Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -195,13 +195,13 @@ class MainActivity : AppCompatActivity() {
         networkClient?.capturePhoto(cameraId, object : CameraNetworkClient.CameraCallback {
             override fun onSuccess(response: String) {
                 runOnUiThread {
-                    Toast.makeText(this@MainActivity, "Photo captured on wireless camera", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, getString(R.string.photo_captured_wireless), Toast.LENGTH_SHORT).show()
                 }
             }
 
             override fun onError(error: String) {
                 runOnUiThread {
-                    Toast.makeText(this@MainActivity, "Wireless capture error: $error", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, getString(R.string.wireless_capture_error, error), Toast.LENGTH_SHORT).show()
                 }
             }
         })
@@ -219,7 +219,7 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     isRecording = true
                     binding.recordButton.text = getString(R.string.stop_recording)
-                    Toast.makeText(this, "Recording started", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, getString(R.string.recording_started), Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -227,7 +227,7 @@ class MainActivity : AppCompatActivity() {
         networkClient?.startRecording(cameraId, object : CameraNetworkClient.CameraCallback {
             override fun onSuccess(response: String) {
                 runOnUiThread {
-                    Toast.makeText(this@MainActivity, "Wireless recording started", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, getString(R.string.wireless_recording_started), Toast.LENGTH_SHORT).show()
                 }
             }
 
@@ -249,7 +249,7 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     isRecording = false
                     binding.recordButton.text = getString(R.string.start_recording)
-                    Toast.makeText(this, "Recording stopped", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, getString(R.string.recording_stopped), Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -257,7 +257,7 @@ class MainActivity : AppCompatActivity() {
         networkClient?.stopRecording(cameraId, object : CameraNetworkClient.CameraCallback {
             override fun onSuccess(response: String) {
                 runOnUiThread {
-                    Toast.makeText(this@MainActivity, "Wireless recording stopped", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, getString(R.string.wireless_recording_stopped), Toast.LENGTH_SHORT).show()
                 }
             }
 
@@ -295,7 +295,7 @@ class MainActivity : AppCompatActivity() {
         networkClient?.switchCamera(cameraId, object : CameraNetworkClient.CameraCallback {
             override fun onSuccess(response: String) {
                 runOnUiThread {
-                    Toast.makeText(this@MainActivity, "Camera switched", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, getString(R.string.camera_switched), Toast.LENGTH_SHORT).show()
                 }
             }
 
