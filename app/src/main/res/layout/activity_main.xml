@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Root FrameLayout für Fullscreen-Support -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rootLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:weightSum="10"
+        android:padding="8dp"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="4"
+            android:baselineAligned="true"
+            android:orientation="horizontal"
+            android:weightSum="2">
+
+            <FrameLayout
+                android:id="@+id/videoFrame1"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp">
+
+                <com.example.cameracontrol.MjpegTextureView
+                    android:id="@+id/videoContainer1"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"/>
+
+                <!-- Settings button -->
+                <ImageButton
+                    android:id="@+id/btnSettings1"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_gravity="top|end"
+                    android:layout_margin="8dp"
+                    android:backgroundTint="#88000000"
+                    android:scaleType="center"
+                    android:padding="6dp"
+                    android:src="@android:drawable/ic_menu_manage"
+                    android:contentDescription="Einstellungen" />
+
+                <!-- Roter Blink-Rahmen für Aufnahme -->
+                <View
+                    android:id="@+id/recordingIndicator1"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/recording_border"
+                    android:visibility="gone"/>
+            </FrameLayout>
+
+            <FrameLayout
+                android:id="@+id/videoFrame2"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp">
+
+                <com.example.cameracontrol.MjpegTextureView
+                    android:id="@+id/videoContainer2"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"/>
+
+                <!-- Settings button -->
+                <ImageButton
+                    android:id="@+id/btnSettings2"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_gravity="top|end"
+                    android:layout_margin="8dp"
+                    android:backgroundTint="#88000000"
+                    android:scaleType="center"
+                    android:padding="6dp"
+                    android:src="@android:drawable/ic_menu_manage"
+                    android:contentDescription="Einstellungen" />
+
+                <!-- Roter Blink-Rahmen für Aufnahme -->
+                <View
+                    android:id="@+id/recordingIndicator2"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/recording_border"
+                    android:visibility="gone"/>
+            </FrameLayout>
+        </LinearLayout>
+
+        <!-- Zentrale Button-Leiste für Aufnahme, Shutdown, Reboot -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:padding="8dp">
+
+            <Button
+                android:id="@+id/btnToggleRecording"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="2"
+                android:text="Start Aufnahme"
+                android:textSize="16sp"
+                android:backgroundTint="#27ae60"
+                android:textColor="#FFFFFF"
+                android:layout_marginEnd="8dp"/>
+
+            <Button
+                android:id="@+id/btnShutdown"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:text="Shutdown"
+                android:textSize="14sp"
+                android:backgroundTint="#e74c3c"
+                android:textColor="#FFFFFF"
+                android:layout_marginEnd="8dp"/>
+
+            <Button
+                android:id="@+id/btnReboot"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:text="Reboot"
+                android:textSize="14sp"
+                android:backgroundTint="#f39c12"
+                android:textColor="#FFFFFF"/>
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:padding="8dp">
+
+            <Button
+                android:id="@+id/camera_1_button"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="2"
+                android:text="Kamera 1"
+                android:textSize="16sp"
+                android:layout_marginEnd="8dp"/>
+
+            <Button
+                android:id="@+id/camera_2_button"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="2"
+                android:text="Kamera 2"
+                android:textSize="16sp"
+                android:layout_marginEnd="8dp"/>
+
+            <Button
+                android:id="@+id/both_cameras_button"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="2"
+                android:text="Beide Kameras"
+                android:textSize="16sp"
+                android:layout_marginEnd="8dp"/>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="5"
+            android:baselineAligned="false"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp"
+            android:visibility="visible"
+            android:weightSum="2">
+
+            <FrameLayout
+                android:id="@+id/graphContainer1"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:visibility="visible"
+                android:background="#111">
+
+                <com.example.cameracontrol.SystemMonitorView
+                    android:id="@+id/systemMonitor1"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+            </FrameLayout>
+
+            <FrameLayout
+                android:id="@+id/graphContainer2"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:visibility="visible"
+                android:background="#111">
+
+                <com.example.cameracontrol.SystemMonitorView
+                    android:id="@+id/systemMonitor2"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+            </FrameLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+<!-- 2D Control-Pad unten rechts (kombiniert Stepper + Servo) -->
+<com.example.cameracontrol.CombinedControlView
+    android:id="@+id/combinedControl"
+    android:layout_width="320dp"
+    android:layout_height="320dp"
+    android:layout_gravity="bottom|end"
+    android:layout_marginEnd="16dp"
+    android:layout_marginBottom="16dp"
+    android:visibility="gone" />
+
+<!-- Toggle-Button für Control-Pad -->
+<Button
+    android:id="@+id/btnToggleControl"
+    android:layout_width="56dp"
+    android:layout_height="56dp"
+    android:layout_gravity="bottom|end"
+    android:layout_marginEnd="16dp"
+    android:layout_marginBottom="16dp"
+    android:text="🎮"
+    android:textSize="24sp"
+    android:backgroundTint="#3498db"
+    android:textColor="#FFFFFF" />
+
+<!-- Debug-Overlay für Steuerungswerte -->
+<TextView
+    android:id="@+id/debugOverlay"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_gravity="bottom|start"
+    android:layout_marginStart="16dp"
+    android:layout_marginBottom="16dp"
+    android:background="#CC000000"
+    android:padding="12dp"
+    android:textColor="#00FF00"
+    android:fontFamily="monospace"
+    android:textSize="12sp"
+    android:text="Debug: Warte auf Eingabe..."
+    android:visibility="visible" />
+
+</FrameLayout>

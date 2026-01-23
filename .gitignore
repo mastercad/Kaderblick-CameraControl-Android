@@ -1,0 +1,37 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+/.idea/inspectionProfiles/
+/.idea/dictionaries/
+/.idea/kotlinc.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Kotlin Compiler Outputs
+*.class
+*.dex
+*.log
+
+# APK/Bundle Dateien
+*.apk
+*.aab
+*.ap_
+
+# Backup/Temp Dateien
+*~
+*.swp
+*.bak
+
+# Signing Keystore
+*.jks
+*.keystore

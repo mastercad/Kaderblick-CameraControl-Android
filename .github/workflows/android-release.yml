@@ -1,0 +1,113 @@
+name: Android CI/CD
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: gradle
+        
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+      
+    - name: Build Debug APK
+      run: ./gradlew assembleDebug --stacktrace
+      
+    - name: Build Release APK
+      run: ./gradlew assembleRelease --stacktrace
+      
+    - name: Get version name
+      id: get_version
+      run: |
+        VERSION_NAME=$(grep "versionName" app/build.gradle.kts | awk -F'"' '{print $2}')
+        VERSION_CODE=$(grep "versionCode" app/build.gradle.kts | awk '{print $3}')
+        echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
+        echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
+        
+    - name: Rename APKs
+      run: |
+        mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/CameraControl-v${{ steps.get_version.outputs.version_name }}-debug.apk
+        mv app/build/outputs/apk/release/app-release-unsigned.apk app/build/outputs/apk/release/CameraControl-v${{ steps.get_version.outputs.version_name }}-release.apk
+        
+    - name: Upload Debug APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: CameraControl-debug
+        path: app/build/outputs/apk/debug/CameraControl-*.apk
+        
+    - name: Upload Release APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: CameraControl-release
+        path: app/build/outputs/apk/release/CameraControl-*.apk
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Get version name
+      id: get_version
+      run: |
+        VERSION_NAME=$(grep "versionName" app/build.gradle.kts | awk -F'"' '{print $2}')
+        echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
+        
+    - name: Download Debug APK
+      uses: actions/download-artifact@v4
+      with:
+        name: CameraControl-debug
+        path: ./apks
+        
+    - name: Download Release APK
+      uses: actions/download-artifact@v4
+      with:
+        name: CameraControl-release
+        path: ./apks
+        
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ steps.get_version.outputs.version_name }}
+        name: CameraControl v${{ steps.get_version.outputs.version_name }}
+        body: |
+          ## CameraControl Release v${{ steps.get_version.outputs.version_name }}
+          
+          ### Download
+          - **Debug APK**: Für Entwicklung und Testing
+          - **Release APK**: Für produktiven Einsatz (unsigned)
+          
+          ### Installation
+          1. APK herunterladen
+          2. "Unbekannte Quellen" in Android-Einstellungen erlauben
+          3. APK installieren
+          
+          ### Änderungen
+          Automatischer Build vom main Branch
+          
+          **Commit**: ${{ github.sha }}
+        files: |
+          ./apks/*.apk
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

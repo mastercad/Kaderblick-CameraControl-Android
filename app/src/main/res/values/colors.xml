@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Grüne Farben -->
+    <color name="green_primary">#018606</color>
+    <color name="green_highlight">#02b008</color>
+    <color name="green_dark">#015504</color>
+    
+    <!-- Legacy names für Kompatibilität -->
+    <color name="purple_200">#02b008</color>
+    <color name="purple_500">#018606</color>
+    <color name="purple_700">#015504</color>
+    <color name="teal_200">#02b008</color>
+    <color name="teal_700">#015504</color>
+    
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+</resources>
