@@ -20,12 +20,14 @@ Eine professionelle Android-App zur Fernsteuerung von motorisierten Kamera-Rigs 
 ## 📋 Voraussetzungen
 
 ### Hardware
+
 - Android-Gerät mit Android 7.0 (API 24) oder höher
 - Raspberry Pi(s) mit Kamera-Server (siehe Backend-Setup unten)
 - Motorisiertes Kamera-Rig mit Stepper- und Servo-Motoren
 - WLAN-Netzwerk für die Kommunikation
 
 ### Software
+
 - Android Studio Hedgehog (2023.1.1) oder neuer
 - JDK 11 oder höher
 - Gradle 8.0+
@@ -33,12 +35,14 @@ Eine professionelle Android-App zur Fernsteuerung von motorisierten Kamera-Rigs 
 ## 🚀 Installation
 
 ### Option 1: APK herunterladen (Einfachste Methode)
+
 1. Gehe zu [Releases](../../releases)
 2. Lade die neueste `CameraControl-vX.X.X-release.apk` herunter
 3. Installiere die APK auf deinem Android-Gerät
 4. Erlaube "Installation aus unbekannten Quellen" falls nötig
 
 ### Option 2: Aus Quellcode bauen
+
 ```bash
 # Repository klonen
 git clone https://github.com/USERNAME/CameraControl.git
@@ -49,6 +53,7 @@ cd CameraControl
 ```
 
 ### Option 3: Mit Gradle CLI
+
 ```bash
 ./gradlew assembleRelease
 # APK findet sich in: app/build/outputs/apk/release/
@@ -57,6 +62,7 @@ cd CameraControl
 ## ⚙️ Konfiguration
 
 ### Kamera-URLs anpassen
+
 Bearbeite die IP-Adressen in [MainActivity.kt](app/src/main/java/com/example/cameracontrol/MainActivity.kt):
 
 ```kotlin
@@ -65,6 +71,7 @@ private val camera2BaseUrl = "http://192.168.178.48:8000"
 ```
 
 ### Hardware-Parameter anpassen
+
 Die Steuerungsparameter können in [HardwareConfig.kt](app/src/main/java/com/example/cameracontrol/HardwareConfig.kt) angepasst werden:
 
 ```kotlin
@@ -87,7 +94,7 @@ const val SERVO_UPDATE_INTERVAL = 500L
 
 ### Hauptbildschirm
 
-```
+```plain
 ┌─────────────────────────────────────────┐
 │  🔄 Kamera 1      📊 Monitor    🔄 Kamera 2 │
 │  ┌───────────┐                ┌───────────┐ │
@@ -102,17 +109,20 @@ const val SERVO_UPDATE_INTERVAL = 500L
 ### Steuerungselemente
 
 #### 1. Video-Streams
+
 - **Einzelklick auf Stream**: Wechsel in Fullscreen-Modus
 - **Einzelklick im Fullscreen**: Zurück zur Dual-Ansicht
 - Im Fullscreen wird automatisch nur die angezeigte Kamera gesteuert
 
 #### 2. Kamera-Modi
+
 - **Kamera 1 🎥**: Steuert nur die erste Kamera
 - **Kamera 2 🎥**: Steuert nur die zweite Kamera  
 - **Beide 🎥🎥**: Synchronisierte Steuerung beider Kameras
 
 #### 3. Joystick (Kombinierte Steuerung)
-```
+
+```plain
          ↑ Servo hoch
          │
     ← ───┼─── → Stepper links/rechts
@@ -121,6 +131,7 @@ const val SERVO_UPDATE_INTERVAL = 500L
 ```
 
 **Bedienung**:
+
 - **X-Achse (horizontal)**: Steuert Stepper-Motor (Pan)
   - Je weiter vom Zentrum, desto schneller die Drehung
   - Dead-Zone in der Mitte verhindert ungewollte Bewegungen
@@ -130,29 +141,35 @@ const val SERVO_UPDATE_INTERVAL = 500L
   - Schwellenwert verhindert Zittern
 
 #### 4. Winkel-Slider
+
 - **Absoluter Servo-Winkel**: 0° - 180°
 - Präzise Positionierung durch direkten Winkel
 - Debouncing verhindert Überlastung
 
 #### 5. Stepper-Rad (Detaillierte Kontrolle)
+
 - **Links drehen**: Motor dreht gegen den Uhrzeigersinn
 - **Rechts drehen**: Motor dreht im Uhrzeigersinn
 - **Geschwindigkeit**: Wird durch Drehrate bestimmt
 - **Anzeige**: Zentrale Anzeige der aktuellen Steps
 
 #### 6. System-Monitor
+
 Zeigt in Echtzeit:
+
 - **CPU-Auslastung** (%)
 - **CPU-Temperatur** (°C)
 - **Netzwerk-Latenz** (ms)
 - **Verbindungsstatus**
 
 #### 7. Aufnahme-Steuerung
+
 - **🔴 Record**: Startet Videoaufzeichnung auf dem Pi
 - **⏹️ Stop**: Beendet die Aufzeichnung
 - Status-Anzeige: Zeigt laufende Aufnahmen
 
 #### 8. Erweiterte Einstellungen (⚙️-Button)
+
 - **Servo Speed**: Geschwindigkeit der Servo-Bewegungen
 - **Stepper Delay**: Verzögerung zwischen Stepper-Schritten
 - **Auto-Home**: Automatische Zentrierung beim Start
@@ -160,13 +177,13 @@ Zeigt in Echtzeit:
 
 ### Gesten und Shortcuts
 
-| Geste/Aktion | Funktion |
-|--------------|----------|
-| Tap auf Video | Fullscreen Toggle |
-| Joystick ziehen | Motor-Steuerung |
-| Slider bewegen | Präziser Servo-Winkel |
-| Rad drehen | Feinsteuerung Stepper |
-| 🎮 Button | Steuerung ein/ausblenden |
+| Geste/Aktion    | Funktion                 |
+| --------------- | ------------------------ |
+| Tap auf Video   | Fullscreen Toggle        |
+| Joystick ziehen | Motor-Steuerung          |
+| Slider bewegen  | Präziser Servo-Winkel    |
+| Rad drehen      | Feinsteuerung Stepper    |
+| 🎮 Button       | Steuerung ein/ausblenden |
 
 ## 🏗️ Backend-Setup (Raspberry Pi)
 
@@ -253,7 +270,7 @@ if __name__ == '__main__':
 
 ### Hardware-Verbindungen (Raspberry Pi)
 
-```
+```plain
 Raspberry Pi GPIO
 ├── Stepper-Motor
 │   ├── Step Pin → GPIO 17
@@ -268,24 +285,28 @@ Raspberry Pi GPIO
 ## 📱 Features im Detail
 
 ### MJPEG-Streaming
+
 - Automatische Reconnect-Logik bei Verbindungsabbruch
 - Frame-Rate-Limitierung (30 FPS max) für Performance
 - Puffer-Management für flüssige Wiedergabe
 - Fehler-Overlays bei Verbindungsproblemen
 
 ### Motor-Steuerung
+
 - **Throttling**: Verhindert Überlastung durch zu viele Requests
 - **Dead-Zone**: Minimiert unbeabsichtigte Mikrobewegungen
 - **Non-Blocking**: Alle Requests asynchron via Coroutines
 - **Servo-Threshold**: Schwellenwert gegen Servo-Jittering
 
 ### Fullscreen-Modus
+
 - Immersive Ansicht mit ausgeblendeten System-Bars
 - Automatische Kamera-Selektion (steuert nur angezeigte Kamera)
 - Tap zum Verlassen
 - Smooth Transitions
 
 ### Fehlerbehandlung
+
 - Automatische Server-Erkennung (online/offline)
 - Retry-Mechanismus bei fehlgeschlagenen Requests
 - Visuelles Feedback bei Verbindungsproblemen
@@ -295,7 +316,7 @@ Raspberry Pi GPIO
 
 ### Projektstruktur
 
-```
+```plain
 app/src/main/java/com/example/cameracontrol/
 ├── MainActivity.kt              # Hauptaktivität
 ├── CameraController.kt          # Motor-Steuerungs-Logik
@@ -369,6 +390,7 @@ com.github.PhilJay:MPAndroidChart:v3.1.0
 ## 🔄 CI/CD
 
 Automatische Builds über GitHub Actions:
+
 - Build bei jedem Push zu `main`/`master`
 - Release-APKs bei Tags (`v*`)
 - Automatische Version-Benennung
@@ -379,24 +401,32 @@ Siehe [.github/workflows/android-release.yml](.github/workflows/android-release.
 ## 🐛 Bekannte Probleme & Lösungen
 
 ### Problem: Video-Stream startet nicht
-**Lösung**: 
+
+**Lösung**:
+
 - Prüfe IP-Adressen in `MainActivity.kt`
 - Stelle sicher, dass Raspberry Pi Server läuft
 - Port 8000 muss erreichbar sein (Firewall prüfen)
 
 ### Problem: Motoren reagieren nicht
+
 **Lösung**:
+
 - Überprüfe Backend-API-Endpunkte
 - Logge HTTP-Responses im Android Studio Logcat
 - Teste API manuell mit `curl` oder Postman
 
 ### Problem: App stürzt ab bei langsamer Verbindung
+
 **Lösung**:
+
 - Erhöhe Timeouts in `CameraController.kt`
 - Reduziere Update-Intervalle in `HardwareConfig.kt`
 
 ### Problem: Servo zittert/jittert
+
 **Lösung**:
+
 - Erhöhe `SERVO_THRESHOLD` in `HardwareConfig.kt`
 - Verlängere `SERVO_UPDATE_INTERVAL`
 
@@ -406,7 +436,8 @@ Dieses Projekt steht unter der MIT-Lizenz. Siehe [LICENSE](LICENSE) für Details
 
 ## 👨‍💻 Autor
 
-**Andreas**
+**Andreas Kempe**:
+
 - GitHub: [@mastercad](https://github.com/mastercad)
 
 ## 🙏 Danksagungen
