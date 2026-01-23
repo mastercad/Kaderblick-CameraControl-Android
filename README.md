@@ -407,7 +407,7 @@ Dieses Projekt steht unter der MIT-Lizenz. Siehe [LICENSE](LICENSE) für Details
 ## 👨‍💻 Autor
 
 **Andreas**
-- GitHub: [@USERNAME](https://github.com/USERNAME)
+- GitHub: [@mastercad](https://github.com/mastercad)
 
 ## 🙏 Danksagungen
 
