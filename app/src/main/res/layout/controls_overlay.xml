@@ -11,6 +11,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
 
+        <!-- Fixierter Header – immer sichtbar, auch wenn Inhalt darunter scrollt -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -31,35 +32,63 @@
                 android:id="@+id/btnResetAll"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Reset" />
-
-        </LinearLayout>
-
-        <ScrollView
-            android:layout_width="match_parent"
-            android:layout_height="240dp"
-            android:layout_marginTop="8dp">
-
-            <LinearLayout
-                android:id="@+id/controls_container"
-                android:orientation="vertical"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content" />
-        </ScrollView>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="end"
-            android:layout_marginTop="8dp">
+                android:text="Reset"
+                style="?android:attr/buttonStyleSmall" />
 
             <Button
                 android:id="@+id/btnCloseControls"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Schließen" />
+                android:text="✕"
+                style="?android:attr/buttonStyleSmall" />
+
         </LinearLayout>
+
+        <!-- Gesamter scrollbarer Inhalt -->
+        <ScrollView
+            android:id="@+id/controls_main_scroll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp">
+
+            <LinearLayout
+                android:orientation="vertical"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <!-- Schnell-Einstellungen: Auflösung -->
+                <LinearLayout
+                    android:id="@+id/controls_quick_section"
+                    android:orientation="vertical"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+
+                <!-- Kamera-Bildeinstellungen (Kontrast, Gain, etc.) -->
+                <LinearLayout
+                    android:id="@+id/controls_container"
+                    android:orientation="vertical"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+
+                <!-- Preset-Sektion -->
+                <LinearLayout
+                    android:id="@+id/controls_preset_section"
+                    android:orientation="vertical"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp" />
+
+                <!-- Joystick / Steuerung (Y-Achse invertieren) -->
+                <LinearLayout
+                    android:id="@+id/controls_joystick_section"
+                    android:orientation="vertical"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp" />
+
+            </LinearLayout>
+        </ScrollView>
+
     </LinearLayout>
 
 </FrameLayout>

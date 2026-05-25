@@ -6,8 +6,12 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.RectF
 import android.util.AttributeSet
 import android.util.Log
+import android.view.GestureDetector
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.TextureView
 import java.io.BufferedInputStream
 import java.net.HttpURLConnection
@@ -39,6 +43,60 @@ class MjpegTextureView @JvmOverloads constructor(
         isAntiAlias = true
     }
 
+    // Letzter empfangener JPEG-Frame (raw bytes) – für Auto-Tune-Analyse
+    @Volatile private var latestJpegBytes: ByteArray? = null
+    // One-shot Callback: wird genau einmal für den nächsten Frame gefeuert, dann gelöscht
+    @Volatile var onNextFrameCallback: ((ByteArray) -> Unit)? = null
+
+    fun getLatestJpeg(): ByteArray? = latestJpegBytes
+
+    // Pinch-to-Zoom-Zustand (UI-Thread schreibt, Render-Thread liest)
+    @Volatile private var zoomScale = 1.0f
+    @Volatile private var zoomTx = 0f
+    @Volatile private var zoomTy = 0f
+
+    private val scaleDetector = ScaleGestureDetector(context,
+        object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(detector: ScaleGestureDetector): Boolean {
+                val factor = detector.scaleFactor
+                val newScale = (zoomScale * factor).coerceIn(1.0f, 5.0f)
+                val realFactor = newScale / zoomScale
+                // Fokuspunkt auf dem Bildschirm bleibt beim Zoomen an seiner Position
+                zoomTx = zoomTx * realFactor + (detector.focusX - width / 2f) * (1f - realFactor)
+                zoomTy = zoomTy * realFactor + (detector.focusY - height / 2f) * (1f - realFactor)
+                zoomScale = newScale
+                clampTranslate()
+                return true
+            }
+        })
+
+    private val gestureDetector = GestureDetector(context,
+        object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent) = true
+            override fun onSingleTapUp(e: MotionEvent): Boolean {
+                performClick()
+                return true
+            }
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                if (zoomScale > 1.0f) {
+                    zoomScale = 1.0f; zoomTx = 0f; zoomTy = 0f
+                } else {
+                    zoomScale = 2.0f
+                    clampTranslate()
+                }
+                return true
+            }
+            override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dX: Float, dY: Float): Boolean {
+                if (zoomScale > 1.0f) {
+                    zoomTx -= dX
+                    zoomTy -= dY
+                    clampTranslate()
+                    return true
+                }
+                return false
+            }
+        })
+
     init { surfaceTextureListener = this }
 
     fun startStream(url: String) {
@@ -62,6 +120,25 @@ class MjpegTextureView @JvmOverloads constructor(
         
         // Zeige "Keine Vorschau" Nachricht wenn Stream gestoppt wird
         drawStatusText("Keine Vorschau\nWiederverbinden...")
+    }
+
+    /** Zoom auf 1:1 zurücksetzen, z.B. beim Verlassen des Vollbilds. */
+    fun resetZoom() {
+        zoomScale = 1.0f; zoomTx = 0f; zoomTy = 0f
+    }
+
+    private fun clampTranslate() {
+        if (width == 0 || height == 0) return
+        val maxTx = width * (zoomScale - 1f) / 2f
+        val maxTy = height * (zoomScale - 1f) / 2f
+        zoomTx = zoomTx.coerceIn(-maxTx, maxTx)
+        zoomTy = zoomTy.coerceIn(-maxTy, maxTy)
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        scaleDetector.onTouchEvent(event)
+        gestureDetector.onTouchEvent(event)
+        return true
     }
 
     private fun startReaderThread() {
@@ -288,18 +365,42 @@ class MjpegTextureView @JvmOverloads constructor(
         val jpegData = if (jpegStart > 0) data.copyOfRange(jpegStart, data.size) else data
         
         try {
-            // Decode mit reduzierter Sample-Size für bessere Performance
+            // Berechne passende inSampleSize abhängig von der tatsächlichen View-Größe.
+            // Verhindert volle 4K-Dekodierung wenn das View klein ist (z.B. BEIDE-Modus).
+            val viewW = width.takeIf { it > 0 } ?: 1920
+            val viewH = height.takeIf { it > 0 } ?: 1080
+            val sizeOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(jpegData, 0, jpegData.size, sizeOpts)
+            var sampleSize = 1
+            if (sizeOpts.outWidth > 0 && sizeOpts.outHeight > 0) {
+                var hw = sizeOpts.outWidth / 2
+                var hh = sizeOpts.outHeight / 2
+                while (hw >= viewW && hh >= viewH) {
+                    sampleSize *= 2
+                    hw /= 2
+                    hh /= 2
+                }
+            }
+
             val options = BitmapFactory.Options().apply {
-                inSampleSize = 1
+                inSampleSize = sampleSize
                 inPreferredConfig = Bitmap.Config.RGB_565 // Weniger Speicher
             }
-            
+
             val bitmap = BitmapFactory.decodeByteArray(jpegData, 0, jpegData.size, options)
             if (bitmap != null) {
                 if (frameCount % 60 == 0) {
                     Log.d("MJPEG", "Frame $frameCount: ${bitmap.width}x${bitmap.height}")
                 }
-                
+
+                // Letzten Frame cachen + One-Shot-Callback feuern (für Auto-Tune)
+                latestJpegBytes = jpegData
+                val cb = onNextFrameCallback
+                if (cb != null) {
+                    onNextFrameCallback = null
+                    cb(jpegData)
+                }
+
                 // Frame erfolgreich dekodiert
                 lastSuccessfulFrame = System.currentTimeMillis()
                 isConnected = true
@@ -310,14 +411,23 @@ class MjpegTextureView @JvmOverloads constructor(
                         val canvas = lockCanvas()
                         canvas?.let {
                             try {
-                                // Nur skalieren wenn nötig
-                                if (bitmap.width != it.width || bitmap.height != it.height) {
-                                    val scaled = Bitmap.createScaledBitmap(bitmap, it.width, it.height, false)
-                                    it.drawBitmap(scaled, 0f, 0f, null)
-                                    scaled.recycle()
-                                } else {
-                                    it.drawBitmap(bitmap, 0f, 0f, null)
-                                }
+                                val cw = it.width.toFloat()
+                                val ch = it.height.toFloat()
+                                val s  = zoomScale
+                                val tx = zoomTx
+                                val ty = zoomTy
+                                it.drawColor(Color.BLACK)
+                                it.save()
+                                it.translate(cw / 2f + tx, ch / 2f + ty)
+                                it.scale(s, s)
+                                // Bitmap zentriert auf (0,0) zeichnen, skaliert auf Canvas-Größe
+                                it.drawBitmap(
+                                    bitmap,
+                                    android.graphics.Rect(0, 0, bitmap.width, bitmap.height),
+                                    RectF(-cw / 2f, -ch / 2f, cw / 2f, ch / 2f),
+                                    null
+                                )
+                                it.restore()
                                 unlockCanvasAndPost(it)
                             } catch (e: Exception) {
                                 Log.e("MJPEG", "Draw error", e)

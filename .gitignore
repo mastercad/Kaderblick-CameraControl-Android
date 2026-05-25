@@ -35,3 +35,9 @@ local.properties
 # Signing Keystore
 *.jks
 *.keystore
+
+# VS Code Editor-Einstellungen
+.vscode/
+
+# Gradle Daemon JVM (maschinenspezifisch, vom IDE generiert)
+gradle/gradle-daemon-jvm.properties

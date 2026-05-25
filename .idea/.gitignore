@@ -1,3 +1,6 @@
 # Default ignored files
 /shelf/
 /workspace.xml
+# IDE-interner State
+/.name
+/deviceManager.xml

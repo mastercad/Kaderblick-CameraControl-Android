@@ -90,14 +90,23 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Settings buttons to open controls overlay per camera
-        binding.btnSettings1.setOnClickListener {
-            controlsOverlay.attach(cameraController, camera1BaseUrl, "Kamera 1")
-            controlsOverlay.visibility = View.VISIBLE
-        }
-
-        binding.btnSettings2.setOnClickListener {
-            controlsOverlay.attach(cameraController, camera2BaseUrl, "Kamera 2")
+        // Zentraler Settings-Button: öffnet Overlay für aktive Kamera(s)
+        binding.btnSettings.setOnClickListener {
+            val (urls, label, views) = when (cameraController.getControlMode()) {
+                CameraController.ControlMode.CAMERA_1 -> Triple(
+                    listOf(camera1BaseUrl), "Kamera 1",
+                    listOf(binding.videoContainer1)
+                )
+                CameraController.ControlMode.CAMERA_2 -> Triple(
+                    listOf(camera2BaseUrl), "Kamera 2",
+                    listOf(binding.videoContainer2)
+                )
+                CameraController.ControlMode.BOTH -> Triple(
+                    listOf(camera1BaseUrl, camera2BaseUrl), "Beide Kameras",
+                    listOf(binding.videoContainer1, binding.videoContainer2)
+                )
+            }
+            controlsOverlay.attach(cameraController, urls, label, views)
             controlsOverlay.visibility = View.VISIBLE
         }
 
@@ -132,6 +141,7 @@ class MainActivity : AppCompatActivity() {
             if (binding.combinedControl.visibility == android.view.View.VISIBLE) {
                 // Ausblenden
                 binding.combinedControl.visibility = android.view.View.GONE
+                binding.invertYContainer.visibility = android.view.View.GONE
                 binding.btnToggleControl.text = "🎮"
                 binding.btnToggleControl.backgroundTintList = android.content.res.ColorStateList.valueOf(
                     android.graphics.Color.parseColor("#3498db")
@@ -139,6 +149,7 @@ class MainActivity : AppCompatActivity() {
             } else {
                 // Einblenden
                 binding.combinedControl.visibility = android.view.View.VISIBLE
+                binding.invertYContainer.visibility = android.view.View.VISIBLE
                 binding.btnToggleControl.text = "✕"
                 binding.btnToggleControl.backgroundTintList = android.content.res.ColorStateList.valueOf(
                     android.graphics.Color.parseColor("#e74c3c")
@@ -244,6 +255,10 @@ class MainActivity : AppCompatActivity() {
                 cameraController.getCurrentServoAngle { angle ->
                     angle?.let { binding.combinedControl.setAngle(it) }
                 }
+                binding.switchInvertY.isChecked = cameraController.getInvertServo(camera1BaseUrl)
+                if (controlsOverlay.visibility == View.VISIBLE) {
+                    controlsOverlay.switchCamera(listOf(camera1BaseUrl), "Kamera 1", listOf(binding.videoContainer1))
+                }
             }
         }
         
@@ -254,6 +269,10 @@ class MainActivity : AppCompatActivity() {
                 updateUIBasedOnServerStatus(camera1Online, camera2Online)
                 cameraController.getCurrentServoAngle { angle ->
                     angle?.let { binding.combinedControl.setAngle(it) }
+                }
+                binding.switchInvertY.isChecked = cameraController.getInvertServo(camera2BaseUrl)
+                if (controlsOverlay.visibility == View.VISIBLE) {
+                    controlsOverlay.switchCamera(listOf(camera2BaseUrl), "Kamera 2", listOf(binding.videoContainer2))
                 }
             }
         }
@@ -266,6 +285,64 @@ class MainActivity : AppCompatActivity() {
                 cameraController.getCurrentServoAngle { angle ->
                     angle?.let { binding.combinedControl.setAngle(it) }
                 }
+                binding.switchInvertY.isChecked = cameraController.getInvertServo(camera1BaseUrl)
+            }
+        }
+
+        // Y-Achse invertieren: initialer Zustand + Listener
+        binding.switchInvertY.isChecked = cameraController.getInvertServo(camera1BaseUrl)
+        binding.switchInvertY.setOnCheckedChangeListener { _, isChecked ->
+            when (cameraController.getControlMode()) {
+                CameraController.ControlMode.CAMERA_1 -> cameraController.setInvertServo(camera1BaseUrl, isChecked)
+                CameraController.ControlMode.CAMERA_2 -> cameraController.setInvertServo(camera2BaseUrl, isChecked)
+                CameraController.ControlMode.BOTH -> {
+                    cameraController.setInvertServo(camera1BaseUrl, isChecked)
+                    cameraController.setInvertServo(camera2BaseUrl, isChecked)
+                }
+            }
+        }
+
+        // Ziehbarer Divider zwischen Buttons und Graphen
+        var naturalPreviewHeight = 0
+        var dividerDragStartY = 0f
+        var dividerDragStartPreviewH = 0
+
+        // Nach erstem Layout: Höhe der Preview-Section auf exaktes 16:9 setzen
+        binding.previewSection.viewTreeObserver.addOnGlobalLayoutListener(
+            object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
+                override fun onGlobalLayout() {
+                    if (binding.previewSection.width > 0) {
+                        binding.previewSection.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                        val eachFrameWidth = binding.previewSection.width / 2
+                        naturalPreviewHeight = (eachFrameWidth * 9.0 / 16.0).toInt()
+                        val lp = binding.previewSection.layoutParams as android.widget.LinearLayout.LayoutParams
+                        lp.height = naturalPreviewHeight
+                        lp.weight = 0f
+                        binding.previewSection.layoutParams = lp
+                    }
+                }
+            }
+        )
+
+        binding.dragDivider.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    dividerDragStartY = event.rawY
+                    dividerDragStartPreviewH = binding.previewSection.height
+                    true
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    val delta = event.rawY - dividerDragStartY
+                    val minH = (80 * resources.displayMetrics.density).toInt()
+                    val maxH = if (naturalPreviewHeight > 0) naturalPreviewHeight else dividerDragStartPreviewH
+                    val newH = (dividerDragStartPreviewH + delta.toInt()).coerceIn(minH, maxH)
+                    val lp = binding.previewSection.layoutParams as android.widget.LinearLayout.LayoutParams
+                    lp.height = newH
+                    lp.weight = 0f
+                    binding.previewSection.layoutParams = lp
+                    true
+                }
+                else -> false
             }
         }
 
@@ -325,34 +402,87 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun updateRecordingIndicators() {
-        // Prüfe Recording-Status für beide Kameras separat
-        cameraController.retrieveRecordingStatus(camera1BaseUrl) { cam1Recording ->
-            if (cam1Recording) {
-                binding.recordingIndicator1.visibility = android.view.View.VISIBLE
-                if (binding.recordingIndicator1.animation == null) {
-                    val blinkAnimation = android.view.animation.AnimationUtils.loadAnimation(this, R.anim.blink)
-                    binding.recordingIndicator1.startAnimation(blinkAnimation)
-                }
-            } else {
-                binding.recordingIndicator1.clearAnimation()
-                binding.recordingIndicator1.visibility = android.view.View.GONE
+        updateCameraRecordingIndicator(camera1BaseUrl, binding.recordingIndicator1, 1)
+        updateCameraRecordingIndicator(camera2BaseUrl, binding.recordingIndicator2, 2)
+    }
+
+    /**
+     * Fragt den Detailstatus einer Kamera ab und aktualisiert den Aufnahmeindikator.
+     *
+     * Zustände:
+     * - Voll gesund (isRecording=true, kein Fehler) → rot blinkend
+     * - Aufnahme aktiv aber Audio-Problem          → orange blinkend + Warnung
+     * - Aufnahme-Fehler (Thread tot / capture_error) → orange statisch + Fehler im Debug-Overlay
+     * - Nicht aufnehmend                           → Indikator ausgeblendet
+     */
+    private fun updateCameraRecordingIndicator(
+        baseUrl: String,
+        indicator: android.view.View,
+        camNumber: Int
+    ) {
+        cameraController.retrieveDetailedStatus(baseUrl) { status ->
+            if (status == null) {
+                // Server nicht erreichbar
+                indicator.clearAnimation()
+                indicator.visibility = android.view.View.GONE
+                return@retrieveDetailedStatus
             }
-        }
-        
-        cameraController.retrieveRecordingStatus(camera2BaseUrl) { cam2Recording ->
-            if (cam2Recording) {
-                binding.recordingIndicator2.visibility = android.view.View.VISIBLE
-                if (binding.recordingIndicator2.animation == null) {
-                    val blinkAnimation = android.view.animation.AnimationUtils.loadAnimation(this, R.anim.blink)
-                    binding.recordingIndicator2.startAnimation(blinkAnimation)
+
+            when {
+                status.isFullyHealthy && !status.hasAudioProblem -> {
+                    // Alles OK: rot blinkend
+                    indicator.background = recordingBorderDrawable(android.graphics.Color.parseColor("#e74c3c"))
+                    indicator.visibility = android.view.View.VISIBLE
+                    if (indicator.animation == null) {
+                        val anim = android.view.animation.AnimationUtils.loadAnimation(this, R.anim.blink)
+                        indicator.startAnimation(anim)
+                    }
                 }
-            } else {
-                binding.recordingIndicator2.clearAnimation()
-                binding.recordingIndicator2.visibility = android.view.View.GONE
+
+                status.isRecording && status.hasAudioProblem -> {
+                    // Aufnahme läuft, aber Audio fehlt: orange blinkend
+                    indicator.background = recordingBorderDrawable(android.graphics.Color.parseColor("#e67e22"))
+                    indicator.visibility = android.view.View.VISIBLE
+                    if (indicator.animation == null) {
+                        val anim = android.view.animation.AnimationUtils.loadAnimation(this, R.anim.blink)
+                        indicator.startAnimation(anim)
+                    }
+                    val errorText = status.audioError ?: "Kein Audio-Device"
+                    Log.w("MainActivity", "CAM$camNumber Audio-Problem: $errorText")
+                    binding.debugOverlay.text =
+                        "⚠️ CAM$camNumber AUDIO FEHLER\n━━━━━━━━━━━━━━━━━━━━\n$errorText"
+                }
+
+                !status.isRecording && status.errorSummary != null -> {
+                    // Aufnahme-Fehler: orange statisch, Fehler anzeigen
+                    indicator.background = recordingBorderDrawable(android.graphics.Color.parseColor("#e67e22"))
+                    indicator.clearAnimation()
+                    indicator.visibility = android.view.View.VISIBLE
+                    Log.e("MainActivity", "CAM$camNumber Aufnahme-Fehler: ${status.errorSummary}")
+                    binding.debugOverlay.text =
+                        "🔴 CAM$camNumber AUFNAHME FEHLER\n━━━━━━━━━━━━━━━━━━━━\n${status.errorSummary}"
+                }
+
+                else -> {
+                    // Nicht aufnehmend, kein Fehler
+                    indicator.clearAnimation()
+                    indicator.visibility = android.view.View.GONE
+                }
             }
         }
     }
     
+    private fun recordingBorderDrawable(color: Int): android.graphics.drawable.GradientDrawable {
+        val strokePx = (8 * resources.displayMetrics.density).toInt()
+        val cornerPx = 4 * resources.displayMetrics.density
+        return android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+            setColor(android.graphics.Color.TRANSPARENT)
+            setStroke(strokePx, color)
+            cornerRadius = cornerPx
+        }
+    }
+
     private fun updateUIBasedOnServerStatus(camera1Online: Boolean, camera2Online: Boolean) {
         this.camera1Online = camera1Online
         this.camera2Online = camera2Online

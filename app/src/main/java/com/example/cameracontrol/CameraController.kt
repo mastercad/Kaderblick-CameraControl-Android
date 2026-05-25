@@ -32,6 +32,31 @@ class CameraController(
     // Konfiguration
     var stepperDelay = HardwareConfig.STEPPER_DEFAULT_DELAY
     var servoThreshold = HardwareConfig.SERVO_THRESHOLD // Mindestschwelle gegen Zucken
+
+    // X-Achse (Stepper) invertieren pro Kamera
+    // Die rechte Kamera hat den Stepper spiegelverkehrt eingebaut → bei Solo-Steuerung invertieren
+    private var invertStepperCam1 = false
+    private var invertStepperCam2 = false
+
+    fun setInvertStepper(baseUrl: String, invert: Boolean) {
+        if (baseUrl == camera1BaseUrl) invertStepperCam1 = invert
+        else invertStepperCam2 = invert
+    }
+
+    fun getInvertStepper(baseUrl: String): Boolean =
+        if (baseUrl == camera1BaseUrl) invertStepperCam1 else invertStepperCam2
+
+    // Y-Achse (Servo) invertieren pro Kamera
+    private var invertServoCam1 = false
+    private var invertServoCam2 = false
+
+    fun setInvertServo(baseUrl: String, invert: Boolean) {
+        if (baseUrl == camera1BaseUrl) invertServoCam1 = invert
+        else invertServoCam2 = invert
+    }
+
+    fun getInvertServo(baseUrl: String): Boolean =
+        if (baseUrl == camera1BaseUrl) invertServoCam1 else invertServoCam2
     
     private val client = OkHttpClient.Builder()
         .connectTimeout(1500, TimeUnit.MILLISECONDS)
@@ -162,12 +187,12 @@ class CameraController(
             if (now - lastStepperTime >= stepperInterval || xSpeed != lastStepperValue) {
                 lastStepperTime = now
                 lastStepperValue = xSpeed
-                
+
                 when (activeMode) {
-                    ControlMode.CAMERA_1 -> controlStepper(camera1BaseUrl, xSpeed)
-                    ControlMode.CAMERA_2 -> controlStepper(camera2BaseUrl, xSpeed)
+                    ControlMode.CAMERA_1 -> controlStepper(camera1BaseUrl, if (invertStepperCam1) -xSpeed else xSpeed)
+                    ControlMode.CAMERA_2 -> controlStepper(camera2BaseUrl, if (invertStepperCam2) -xSpeed else xSpeed)
                     ControlMode.BOTH -> {
-                        // Beide Kameras parallel, aber entgegengesetzt
+                        // Beide Kameras parallel, aber entgegengesetzt (physikalische Notwendigkeit)
                         controlStepper(camera1BaseUrl, xSpeed)
                         controlStepper(camera2BaseUrl, -xSpeed)
                     }
@@ -185,8 +210,8 @@ class CameraController(
                 lastServoValue = ySpeed
                 
                 when (activeMode) {
-                    ControlMode.CAMERA_1 -> controlServo(camera1BaseUrl, -ySpeed) // Invertiert
-                    ControlMode.CAMERA_2 -> controlServo(camera2BaseUrl, ySpeed)
+                    ControlMode.CAMERA_1 -> controlServo(camera1BaseUrl, if (invertServoCam1) ySpeed else -ySpeed)
+                    ControlMode.CAMERA_2 -> controlServo(camera2BaseUrl, if (invertServoCam2) -ySpeed else ySpeed)
                     ControlMode.BOTH -> {
                         // Beide Kameras parallel
                         controlServo(camera1BaseUrl, -ySpeed)
@@ -299,12 +324,22 @@ class CameraController(
         scope.launch(Dispatchers.IO) {
             try {
                 when (activeMode) {
-                    ControlMode.CAMERA_1 -> setServoAngleForCamera(camera1BaseUrl, angleInt)
-                    ControlMode.CAMERA_2 -> setServoAngleForCamera(camera2BaseUrl, angleInt)
+                    ControlMode.CAMERA_1 -> {
+                        val a = if (invertServoCam1) 180 - angleInt else angleInt
+                        setServoAngleForCamera(camera1BaseUrl, a)
+                    }
+                    ControlMode.CAMERA_2 -> {
+                        val a = if (invertServoCam2) 180 - angleInt else angleInt
+                        setServoAngleForCamera(camera2BaseUrl, a)
+                    }
                     ControlMode.BOTH -> {
-                        // Beide Kameras auf gleichen Winkel setzen
-                        setServoAngleForCamera(camera1BaseUrl, angleInt)
-                        setServoAngleForCamera(camera2BaseUrl, angleInt)
+                        val a1 = if (invertServoCam1) 180 - angleInt else angleInt
+                        val a2 = if (invertServoCam2) 180 - angleInt else angleInt
+                        // Parallel senden – nicht auf Kamera 1 warten bevor Kamera 2 bekommt
+                        kotlinx.coroutines.coroutineScope {
+                            launch { setServoAngleForCamera(camera1BaseUrl, a1) }
+                            launch { setServoAngleForCamera(camera2BaseUrl, a2) }
+                        }
                     }
                 }
                 
@@ -482,6 +517,124 @@ class CameraController(
                 scope.launch(Dispatchers.Main) {
                     onResult(false)
                 }
+            }
+        }
+    }
+
+    /**
+     * Gibt den vollständigen Gesundheitsstatus einer Kamera zurück.
+     * Enthält alle neuen Felder des camera_service: Capture-Thread-Status, Frame-Zähler,
+     * Fehlermeldungen, Audio-Status und Dateigröße.
+     * Gibt null zurück wenn der Server nicht erreichbar ist.
+     */
+    fun retrieveDetailedStatus(baseUrl: String, onResult: (CameraHealthStatus?) -> Unit) {
+        scope.launch(Dispatchers.IO) {
+            try {
+                val request = Request.Builder()
+                    .url("$baseUrl/status")
+                    .get()
+                    .build()
+
+                statusClient.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val json = JSONObject(response.body?.string() ?: "{}")
+                        val recording = json.optJSONObject("recording")
+                        val cs = json.optJSONObject("camera_service")
+
+                        fun JSONObject?.nullableString(key: String): String? {
+                            if (this == null || isNull(key)) return null
+                            val v = optString(key, "")
+                            return if (v.isEmpty() || v == "null") null else v
+                        }
+
+                        val status = CameraHealthStatus(
+                            isRecording = recording?.optBoolean("active", false) ?: false,
+                            captureThreadAlive = cs?.optBoolean("capture_thread_alive", false) ?: false,
+                            framesWritten = cs?.optInt("frames_written", 0) ?: 0,
+                            lastFrameAgeS = if (cs != null && !cs.isNull("last_frame_age_s"))
+                                cs.optDouble("last_frame_age_s") else null,
+                            captureError = cs.nullableString("capture_error"),
+                            audioAvailable = cs?.optBoolean("audio_available", false) ?: false,
+                            audioError = cs.nullableString("audio_error"),
+                            videoFileBytes = if (cs != null && !cs.isNull("video_file_bytes"))
+                                cs.optLong("video_file_bytes") else null,
+                        )
+                        scope.launch(Dispatchers.Main) { onResult(status) }
+                    } else {
+                        scope.launch(Dispatchers.Main) { onResult(null) }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("CameraController", "retrieveDetailedStatus error: ${e.message}")
+                scope.launch(Dispatchers.Main) { onResult(null) }
+            }
+        }
+    }
+
+    // =============================
+    // Auflösung / FPS
+    // =============================
+
+    data class ResolutionInfo(val width: Int, val height: Int, val fps: Int)
+
+    fun getResolution(baseUrl: String, onResult: (ResolutionInfo?) -> Unit) {
+        scope.launch(Dispatchers.IO) {
+            try {
+                val request = Request.Builder()
+                    .url("$baseUrl/camera/resolution")
+                    .get()
+                    .build()
+                statusClient.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val json = JSONObject(response.body?.string() ?: "{}")
+                        val info = ResolutionInfo(
+                            width = json.optInt("width", 3840),
+                            height = json.optInt("height", 2160),
+                            fps = json.optInt("fps", 30),
+                        )
+                        scope.launch(Dispatchers.Main) { onResult(info) }
+                    } else {
+                        scope.launch(Dispatchers.Main) { onResult(null) }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("CameraController", "getResolution error: ${e.message}")
+                scope.launch(Dispatchers.Main) { onResult(null) }
+            }
+        }
+    }
+
+    fun setResolution(baseUrl: String, width: Int, height: Int, fps: Int,
+                     onResult: (success: Boolean, error: String?) -> Unit) {
+        scope.launch(Dispatchers.IO) {
+            try {
+                val json = JSONObject().apply {
+                    put("width", width)
+                    put("height", height)
+                    put("fps", fps)
+                }
+                val request = Request.Builder()
+                    .url("$baseUrl/camera/resolution")
+                    .post(json.toString().toRequestBody(jsonMediaType))
+                    .build()
+                // Neustart kann mehrere Sekunden dauern → längerer Timeout
+                val longClient = OkHttpClient.Builder()
+                    .connectTimeout(5, TimeUnit.SECONDS)
+                    .readTimeout(20, TimeUnit.SECONDS)
+                    .writeTimeout(5, TimeUnit.SECONDS)
+                    .build()
+                longClient.newCall(request).execute().use { response ->
+                    val body = response.body?.string() ?: ""
+                    if (response.isSuccessful) {
+                        scope.launch(Dispatchers.Main) { onResult(true, null) }
+                    } else {
+                        val msg = JSONObject(body).optString("detail", "HTTP ${response.code}")
+                        scope.launch(Dispatchers.Main) { onResult(false, msg) }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("CameraController", "setResolution error: ${e.message}")
+                scope.launch(Dispatchers.Main) { onResult(false, e.message) }
             }
         }
     }
