@@ -14,6 +14,7 @@ import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.TextureView
 import java.io.BufferedInputStream
+import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.concurrent.thread
@@ -24,6 +25,11 @@ class MjpegTextureView @JvmOverloads constructor(
 
     private var running = false
     private var streamUrl: String? = null
+    private enum class PreviewMode { MJPEG, SNAPSHOT }
+    @Volatile private var previewMode = PreviewMode.SNAPSHOT
+    @Volatile private var workerGeneration = 0L
+    @Volatile private var activeConnection: HttpURLConnection? = null
+    private var snapshotIntervalMs = 1000L
     private var readerThread: Thread? = null
     private var lastFrameTime = 0L
     private val minFrameDelay = 33L // Max ~30fps
@@ -100,9 +106,12 @@ class MjpegTextureView @JvmOverloads constructor(
     init { surfaceTextureListener = this }
 
     fun startStream(url: String) {
+        stopWorkers(showStatus = false)
         streamUrl = url
+        previewMode = PreviewMode.MJPEG
         running = true
         isConnected = false
+        workerGeneration++
         Log.d("MJPEG", "startStream called url=$url")
         if (isAvailable) {
             startReaderThread()
@@ -110,16 +119,43 @@ class MjpegTextureView @JvmOverloads constructor(
         }
     }
 
+    /**
+     * Ruft nacheinander einzelne, aktuelle Original-JPEGs ab. Die nächste
+     * Anfrage beginnt erst nach Darstellung des vorherigen Bildes; dadurch
+     * kann sich kein Rückstau alter Frames bilden.
+     */
+    fun startSnapshotPolling(url: String, intervalMs: Long = 1000L) {
+        stopWorkers(showStatus = false)
+        streamUrl = url
+        previewMode = PreviewMode.SNAPSHOT
+        snapshotIntervalMs = intervalMs.coerceAtLeast(0L)
+        running = true
+        isConnected = false
+        workerGeneration++
+        Log.d("MJPEG", "startSnapshotPolling called url=$url interval=${snapshotIntervalMs}ms")
+        if (isAvailable) {
+            startReaderThread()
+        }
+    }
+
     fun stopStream() {
+        stopWorkers(showStatus = true)
+    }
+
+    private fun stopWorkers(showStatus: Boolean) {
         running = false
+        workerGeneration++
+        activeConnection?.disconnect()
+        activeConnection = null
         readerThread?.interrupt()
         readerThread = null
         retryThread?.interrupt()
         retryThread = null
         isConnected = false
-        
-        // Zeige "Keine Vorschau" Nachricht wenn Stream gestoppt wird
-        drawStatusText("Keine Vorschau\nWiederverbinden...")
+
+        if (showStatus) {
+            drawStatusText("Keine Vorschau\nWiederverbinden...")
+        }
     }
 
     /** Zoom auf 1:1 zurücksetzen, z.B. beim Verlassen des Vollbilds. */
@@ -142,17 +178,25 @@ class MjpegTextureView @JvmOverloads constructor(
     }
 
     private fun startReaderThread() {
-        if (readerThread != null) return
-        readerThread = thread(start = true) {
+        if (readerThread?.isAlive == true) return
+        val generation = workerGeneration
+        val mode = previewMode
+        val worker = thread(start = false, name = "camera-preview-reader") {
+            if (mode == PreviewMode.SNAPSHOT) {
+                pollSnapshots(generation)
+                return@thread
+            }
             var connection: HttpURLConnection? = null
             var input: BufferedInputStream? = null
 
             try {
                 val url = URL(streamUrl)
                 connection = url.openConnection() as HttpURLConnection
+                activeConnection = connection
                 connection.connectTimeout = 5000
                 connection.readTimeout = 10000
                 connection.doInput = true
+                connection.useCaches = false
                 connection.connect()
                 
                 if (connection.responseCode != 200) {
@@ -179,22 +223,83 @@ class MjpegTextureView @JvmOverloads constructor(
                 Log.d("MJPEG", "Boundary: $boundary")
 
                 if (boundary != null) {
-                    parseMjpegWithBoundary(input, boundary)
+                    parseMjpegWithBoundary(input, boundary, generation)
                 } else {
                     // Fallback: Versuche rohe JPEG-Frames zu parsen
-                    parseRawJpegFrames(input)
+                    parseRawJpegFrames(input, generation)
                 }
 
             } catch (e: Exception) {
-                Log.e("MJPEG", "Stream error", e)
-                isConnected = false
-                drawStatusText("Keine Vorschau\n${e.message?.take(30) ?: "Verbindungsfehler"}")
+                if (running && generation == workerGeneration) {
+                    Log.e("MJPEG", "Stream error", e)
+                    isConnected = false
+                    drawStatusText("Keine Vorschau\n${e.message?.take(30) ?: "Verbindungsfehler"}")
+                }
             } finally {
                 input?.close()
                 connection?.disconnect()
+                if (activeConnection === connection) activeConnection = null
+                if (readerThread === Thread.currentThread()) readerThread = null
                 Log.d("MJPEG", "Stream beendet")
             }
         }
+        readerThread = worker
+        worker.start()
+    }
+
+    private fun pollSnapshots(generation: Long) {
+        var frameCount = 0
+        var lastSequence: String? = null
+        while (running && generation == workerGeneration && !Thread.currentThread().isInterrupted) {
+            val startedAt = System.currentTimeMillis()
+            var connection: HttpURLConnection? = null
+            try {
+                connection = URL(streamUrl).openConnection() as HttpURLConnection
+                activeConnection = connection
+                connection.connectTimeout = 3000
+                connection.readTimeout = 5000
+                connection.doInput = true
+                connection.useCaches = false
+                connection.setRequestProperty("Cache-Control", "no-cache, no-store")
+                connection.connect()
+
+                if (connection.responseCode != 200) {
+                    throw java.io.IOException("HTTP ${connection.responseCode}")
+                }
+
+                val sequence = connection.getHeaderField("X-Frame-Sequence")
+                val jpeg = connection.inputStream.use { it.readBytes() }
+                if (sequence == null || sequence != lastSequence) {
+                    processFrame(jpeg, ++frameCount, generation)
+                    lastSequence = sequence
+                }
+                lastSuccessfulFrame = System.currentTimeMillis()
+                isConnected = true
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                break
+            } catch (e: Exception) {
+                if (running && generation == workerGeneration) {
+                    Log.e("MJPEG", "Snapshot error", e)
+                    isConnected = false
+                    drawStatusText("Keine Vorschau\n${e.message?.take(30) ?: "Verbindungsfehler"}")
+                }
+            } finally {
+                connection?.disconnect()
+                if (activeConnection === connection) activeConnection = null
+            }
+
+            val remaining = snapshotIntervalMs - (System.currentTimeMillis() - startedAt)
+            if (remaining > 0 && running && generation == workerGeneration) {
+                try {
+                    Thread.sleep(remaining)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    break
+                }
+            }
+        }
+        if (readerThread === Thread.currentThread()) readerThread = null
     }
     
     private fun startRetryMonitor() {
@@ -247,54 +352,64 @@ class MjpegTextureView @JvmOverloads constructor(
         }
     }
 
-    private fun parseMjpegWithBoundary(input: BufferedInputStream, boundary: String) {
-        val boundaryBytes = boundary.toByteArray()
-        val buffer = ByteArray(65536)
-        var frameBuffer = ByteArray(512 * 1024) // 512KB initial
-        var framePos = 0
+    private fun parseMjpegWithBoundary(input: BufferedInputStream, boundary: String, generation: Long) {
         var frameCount = 0
 
-        while (running) {
-            val bytesRead = input.read(buffer)
-            if (bytesRead == -1) break
+        while (running && generation == workerGeneration) {
+            val line = readAsciiLine(input) ?: break
+            if (line != boundary) continue
 
-            for (i in 0 until bytesRead) {
-                // Vergrößere Buffer wenn nötig
-                if (framePos >= frameBuffer.size) {
-                    frameBuffer = frameBuffer.copyOf(frameBuffer.size * 2)
+            var contentLength: Int? = null
+            while (true) {
+                val header = readAsciiLine(input) ?: return
+                if (header.isEmpty()) break
+                val separator = header.indexOf(':')
+                if (separator > 0 && header.substring(0, separator).trim()
+                        .equals("Content-Length", ignoreCase = true)
+                ) {
+                    contentLength = header.substring(separator + 1).trim().toIntOrNull()
                 }
-                
-                frameBuffer[framePos++] = buffer[i]
+            }
 
-                // Prüfe auf Boundary am Ende
-                if (framePos >= boundaryBytes.size) {
-                    var match = true
-                    for (j in boundaryBytes.indices) {
-                        if (frameBuffer[framePos - boundaryBytes.size + j] != boundaryBytes[j]) {
-                            match = false
-                            break
-                        }
-                    }
-                    
-                    if (match && framePos > boundaryBytes.size) {
-                        // Frame gefunden
-                        val frameData = frameBuffer.copyOfRange(0, framePos - boundaryBytes.size)
-                        processFrame(frameData, ++frameCount)
-                        framePos = 0
-                    }
-                }
+            val length = contentLength
+            if (length == null || length <= 0 || length > 32 * 1024 * 1024) {
+                Log.w("MJPEG", "Ungültige oder fehlende Content-Length; nutze JPEG-Marker")
+                parseRawJpegFrames(input, generation)
+                return
+            }
+
+            val frame = ByteArray(length)
+            var offset = 0
+            while (offset < length && running && generation == workerGeneration) {
+                val read = input.read(frame, offset, length - offset)
+                if (read < 0) return
+                offset += read
+            }
+            if (offset == length) {
+                processFrame(frame, ++frameCount, generation)
             }
         }
     }
 
-    private fun parseRawJpegFrames(input: BufferedInputStream) {
+    private fun readAsciiLine(input: BufferedInputStream): String? {
+        val line = ByteArrayOutputStream(128)
+        while (line.size() < 8192) {
+            val value = input.read()
+            if (value < 0) return if (line.size() == 0) null else line.toString(Charsets.US_ASCII.name())
+            if (value == '\n'.code) break
+            if (value != '\r'.code) line.write(value)
+        }
+        return line.toString(Charsets.US_ASCII.name())
+    }
+
+    private fun parseRawJpegFrames(input: BufferedInputStream, generation: Long) {
         val buffer = ByteArray(65536)
         var frameBuffer = ByteArray(512 * 1024) // 512KB initial
         var framePos = 0
         var inFrame = false
         var frameCount = 0
 
-        while (running) {
+        while (running && generation == workerGeneration) {
             val bytesRead = input.read(buffer)
             if (bytesRead == -1) break
 
@@ -325,7 +440,7 @@ class MjpegTextureView @JvmOverloads constructor(
                         frameBuffer[framePos - 1].toInt() and 0xFF == 0xD9
                     ) {
                         val jpegData = frameBuffer.copyOfRange(0, framePos)
-                        processFrame(jpegData, ++frameCount)
+                        processFrame(jpegData, ++frameCount, generation)
                         framePos = 0
                         inFrame = false
                     }
@@ -334,11 +449,11 @@ class MjpegTextureView @JvmOverloads constructor(
         }
     }
 
-    private fun processFrame(data: ByteArray, frameCount: Int) {
+    private fun processFrame(data: ByteArray, frameCount: Int, generation: Long) {
         // Synchronisiere den gesamten Zugriff um Race Conditions zu vermeiden
         synchronized(textureLock) {
             // Prüfe ZUERST ob die Texture noch verfügbar ist
-            if (!isAvailable || !running || surfaceTexture == null) {
+            if (!isAvailable || !running || generation != workerGeneration || surfaceTexture == null) {
                 return
             }
             
@@ -452,7 +567,7 @@ class MjpegTextureView @JvmOverloads constructor(
         Log.d("MJPEG", "Texture available $width x $height")
         if (running) {
             startReaderThread()
-            startRetryMonitor()
+            if (previewMode == PreviewMode.MJPEG) startRetryMonitor()
         }
     }
 

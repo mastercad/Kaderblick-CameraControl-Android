@@ -194,8 +194,11 @@ Die App benötigt einen HTTP-Server auf dem Raspberry Pi, der folgende Endpunkte
 ```python
 # Beispiel-Struktur der API
 
-# Video-Streaming
-GET /preview                    # MJPEG-Stream
+# Vorschau (Original-MJPEG ohne Dekodierung auf dem Raspberry Pi)
+GET /snapshot                   # Genau ein aktuelles JPEG
+GET /preview                    # Kontinuierlicher MJPEG-Stream
+POST /stream/start              # Livestream-Zustand aktivieren
+POST /stream/stop               # Livestream-Zustand deaktivieren
 
 # Motor-Steuerung
 POST /stepper/move             # Body: {"steps": int, "delay": float}

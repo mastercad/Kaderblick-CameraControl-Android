@@ -29,6 +29,8 @@ class MainActivity : AppCompatActivity() {
 
     private var camera1StreamRunning = false
     private var camera2StreamRunning = false
+    private var camera1Live = false
+    private var camera2Live = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,9 +46,6 @@ class MainActivity : AppCompatActivity() {
             systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
-
-        binding.videoContainer1.startStream("$camera1BaseUrl/preview")
-        binding.videoContainer2.startStream("$camera2BaseUrl/preview")
 
         // Controls overlay (hidden until needed) - MUST be created before fullscreenHelper
         controlsOverlay = ControlsOverlayView(this)
@@ -135,6 +134,10 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnToggleRecording.setOnClickListener {
             toggleRecording()
+        }
+
+        binding.btnToggleLivestream.setOnClickListener {
+            toggleLivestream()
         }
         
         binding.btnToggleControl.setOnClickListener {
@@ -251,6 +254,7 @@ class MainActivity : AppCompatActivity() {
             text = "Kamera 1"
             setOnClickListener {
                 cameraController.setControlMode(CameraController.ControlMode.CAMERA_1)
+                updateLivestreamButton()
                 updateUIBasedOnServerStatus(camera1Online, camera2Online)
                 cameraController.getCurrentServoAngle { angle ->
                     angle?.let { binding.combinedControl.setAngle(it) }
@@ -266,6 +270,7 @@ class MainActivity : AppCompatActivity() {
             text = "Kamera 2"
             setOnClickListener {
                 cameraController.setControlMode(CameraController.ControlMode.CAMERA_2)
+                updateLivestreamButton()
                 updateUIBasedOnServerStatus(camera1Online, camera2Online)
                 cameraController.getCurrentServoAngle { angle ->
                     angle?.let { binding.combinedControl.setAngle(it) }
@@ -281,6 +286,7 @@ class MainActivity : AppCompatActivity() {
             text = "Beide Kameras"
             setOnClickListener {
                 cameraController.setControlMode(CameraController.ControlMode.BOTH)
+                updateLivestreamButton()
                 updateUIBasedOnServerStatus(camera1Online, camera2Online)
                 cameraController.getCurrentServoAngle { angle ->
                     angle?.let { binding.combinedControl.setAngle(it) }
@@ -383,6 +389,65 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+    private fun toggleLivestream() {
+        val stopSelectedStreams = selectedCamerasAreLive()
+        if (stopSelectedStreams) {
+            cameraController.stopLivestream { success, message ->
+                if (success) {
+                    setSelectedCamerasLive(false)
+                    applyPreviewModes()
+                }
+                updateLivestreamButton()
+                android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            cameraController.startLivestream { success, message ->
+                if (success) {
+                    setSelectedCamerasLive(true)
+                    applyPreviewModes()
+                }
+                updateLivestreamButton()
+                android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun selectedCamerasAreLive(): Boolean = when (cameraController.getControlMode()) {
+        CameraController.ControlMode.CAMERA_1 -> camera1Live
+        CameraController.ControlMode.CAMERA_2 -> camera2Live
+        CameraController.ControlMode.BOTH -> camera1Live && camera2Live
+    }
+
+    private fun setSelectedCamerasLive(live: Boolean) {
+        when (cameraController.getControlMode()) {
+            CameraController.ControlMode.CAMERA_1 -> camera1Live = live
+            CameraController.ControlMode.CAMERA_2 -> camera2Live = live
+            CameraController.ControlMode.BOTH -> {
+                camera1Live = live
+                camera2Live = live
+            }
+        }
+    }
+
+    private fun applyPreviewModes() {
+        if (camera1Online) {
+            if (camera1Live) {
+                binding.videoContainer1.startStream("$camera1BaseUrl/preview")
+            } else {
+                binding.videoContainer1.startSnapshotPolling("$camera1BaseUrl/snapshot")
+            }
+            camera1StreamRunning = true
+        }
+        if (camera2Online) {
+            if (camera2Live) {
+                binding.videoContainer2.startStream("$camera2BaseUrl/preview")
+            } else {
+                binding.videoContainer2.startSnapshotPolling("$camera2BaseUrl/snapshot")
+            }
+            camera2StreamRunning = true
+        }
+    }
     
     private fun updateRecordingButton() {
         cameraController.retrieveRecordingStatus { isRecording ->
@@ -398,6 +463,18 @@ class MainActivity : AppCompatActivity() {
             
             // Update Recording-Indikatoren
             updateRecordingIndicators()
+        }
+    }
+
+    private fun updateLivestreamButton() {
+        if (selectedCamerasAreLive()) {
+            binding.btnToggleLivestream.text = "Stream Stop"
+            binding.btnToggleLivestream.backgroundTintList =
+                android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#c0392b"))
+        } else {
+            binding.btnToggleLivestream.text = "Livestream"
+            binding.btnToggleLivestream.backgroundTintList =
+                android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#8e44ad"))
         }
     }
     
@@ -557,8 +634,12 @@ class MainActivity : AppCompatActivity() {
             binding.videoContainer1.stopStream()
             camera1StreamRunning = false
         } else if (camera1Online && !camera1StreamRunning) {
-            Log.d("MainActivity", "Starting CAM1 stream (online)")
-            binding.videoContainer1.startStream("$camera1BaseUrl/preview")
+            Log.d("MainActivity", "Starting CAM1 preview (online)")
+            if (camera1Live) {
+                binding.videoContainer1.startStream("$camera1BaseUrl/preview")
+            } else {
+                binding.videoContainer1.startSnapshotPolling("$camera1BaseUrl/snapshot")
+            }
             camera1StreamRunning = true
         }
         
@@ -567,8 +648,12 @@ class MainActivity : AppCompatActivity() {
             binding.videoContainer2.stopStream()
             camera2StreamRunning = false
         } else if (camera2Online && !camera2StreamRunning) {
-            Log.d("MainActivity", "Starting CAM2 stream (online)")
-            binding.videoContainer2.startStream("$camera2BaseUrl/preview")
+            Log.d("MainActivity", "Starting CAM2 preview (online)")
+            if (camera2Live) {
+                binding.videoContainer2.startStream("$camera2BaseUrl/preview")
+            } else {
+                binding.videoContainer2.startSnapshotPolling("$camera2BaseUrl/snapshot")
+            }
             camera2StreamRunning = true
         }
     }

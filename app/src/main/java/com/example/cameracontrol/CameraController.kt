@@ -476,7 +476,73 @@ class CameraController(
             }
         }
     }
-    
+
+    fun startLivestream(onResult: (success: Boolean, message: String) -> Unit) {
+        scope.launch(Dispatchers.IO) {
+            val cameras = when (activeMode) {
+                ControlMode.CAMERA_1 -> listOf(camera1BaseUrl)
+                ControlMode.CAMERA_2 -> listOf(camera2BaseUrl)
+                ControlMode.BOTH -> listOf(camera1BaseUrl, camera2BaseUrl)
+            }
+            var allSuccess = true
+            val messages = mutableListOf<String>()
+            cameras.forEach { baseUrl ->
+                try {
+                    val request = Request.Builder()
+                        .url("$baseUrl/stream/start")
+                        .post("{}".toRequestBody(jsonMediaType))
+                        .build()
+                    recordingClient.newCall(request).execute().use { response ->
+                        if (response.isSuccessful) {
+                            messages.add("✓ Livestream gestartet")
+                        } else {
+                            allSuccess = false
+                            messages.add("✗ Fehler ${response.code}")
+                        }
+                    }
+                } catch (e: Exception) {
+                    allSuccess = false
+                    messages.add("✗ ${e.javaClass.simpleName}: ${e.message}")
+                    Log.e("CameraController", "startLivestream error", e)
+                }
+            }
+            scope.launch(Dispatchers.Main) { onResult(allSuccess, messages.joinToString("\n")) }
+        }
+    }
+
+    fun stopLivestream(onResult: (success: Boolean, message: String) -> Unit) {
+        scope.launch(Dispatchers.IO) {
+            val cameras = when (activeMode) {
+                ControlMode.CAMERA_1 -> listOf(camera1BaseUrl)
+                ControlMode.CAMERA_2 -> listOf(camera2BaseUrl)
+                ControlMode.BOTH -> listOf(camera1BaseUrl, camera2BaseUrl)
+            }
+            var allSuccess = true
+            val messages = mutableListOf<String>()
+            cameras.forEach { baseUrl ->
+                try {
+                    val request = Request.Builder()
+                        .url("$baseUrl/stream/stop")
+                        .post("{}".toRequestBody(jsonMediaType))
+                        .build()
+                    recordingClient.newCall(request).execute().use { response ->
+                        if (response.isSuccessful) {
+                            messages.add("✓ Livestream gestoppt")
+                        } else {
+                            allSuccess = false
+                            messages.add("✗ Fehler ${response.code}")
+                        }
+                    }
+                } catch (e: Exception) {
+                    allSuccess = false
+                    messages.add("✗ ${e.javaClass.simpleName}: ${e.message}")
+                    Log.e("CameraController", "stopLivestream error", e)
+                }
+            }
+            scope.launch(Dispatchers.Main) { onResult(allSuccess, messages.joinToString("\n")) }
+        }
+    }
+
     fun retrieveRecordingStatus(onResult: (isRecording: Boolean) -> Unit) {
         scope.launch(Dispatchers.IO) {
             val baseUrl = when (activeMode) {
