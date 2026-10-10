@@ -3,8 +3,12 @@ package com.example.cameracontrol
 import android.content.Context
 import android.graphics.Color
 import android.util.AttributeSet
-import android.view.LayoutInflater
+import android.view.Gravity
+import android.view.View
 import android.widget.FrameLayout
+import android.widget.ImageButton
+import android.widget.ScrollView
+import android.widget.TextView
 import com.github.mikephil.charting.charts.LineChart
 import com.github.mikephil.charting.components.Legend
 import com.github.mikephil.charting.components.LegendEntry
@@ -13,9 +17,12 @@ import com.github.mikephil.charting.components.YAxis
 import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
+import com.github.mikephil.charting.formatter.ValueFormatter
 import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.LinkedList
-import kotlin.math.abs
+import java.util.Locale
 
 class SystemMonitorView @JvmOverloads constructor(
     context: Context,
@@ -24,25 +31,34 @@ class SystemMonitorView @JvmOverloads constructor(
 ) : FrameLayout(context, attrs, defStyleAttr) {
 
     private val chart: LineChart
+    private val fileList: ScrollView
+    private val fileListText: TextView
+    private val viewToggle: ImageButton
     private val historySize = 100
     
     // Datenhistorie
     private val cpuHistory = LinkedList<Float>()
     private val ramHistory = LinkedList<Float>()
     private val tempHistory = LinkedList<Float>()
+    private val healthHistory = LinkedList<Float>()
+    private val timestampHistory = LinkedList<Long>()
     private val diskHistories = mutableMapOf<String, LinkedList<Float>>()
+    private val healthTracker = RecordingHealthTracker()
+    private val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.GERMANY)
     
     // Sichtbarkeitsstatus der Linien
     private val visibleLines = mutableMapOf<String, Boolean>(
         "CPU %" to true,
         "RAM %" to true,
-        "Temp °C" to true
+        "Temp °C" to true,
+        "Aufnahmeproblem" to true,
     )
     
     // Farben für die Linien
     private val colorCpu = Color.rgb(33, 150, 243) // Blau
     private val colorRam = Color.rgb(76, 175, 80) // Grün
     private val colorTemp = Color.rgb(244, 67, 54) // Rot
+    private val colorHealth = Color.rgb(255, 0, 255) // Magenta
     private val colorDisk = listOf(
         Color.rgb(255, 152, 0),  // Orange
         Color.rgb(156, 39, 176), // Lila
@@ -53,6 +69,29 @@ class SystemMonitorView @JvmOverloads constructor(
     init {
         chart = LineChart(context)
         addView(chart, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+
+        fileListText = TextView(context).apply {
+            setTextColor(Color.WHITE)
+            textSize = 13f
+            setPadding(dp(12), dp(48), dp(12), dp(12))
+        }
+        fileList = ScrollView(context).apply {
+            setBackgroundColor(Color.parseColor("#1E1E1E"))
+            visibility = View.GONE
+            addView(fileListText)
+        }
+        addView(fileList, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+
+        viewToggle = ImageButton(context).apply {
+            setImageResource(android.R.drawable.ic_menu_agenda)
+            setBackgroundColor(Color.parseColor("#CC333333"))
+            contentDescription = "Dateien und Speicher anzeigen"
+            setColorFilter(Color.WHITE)
+            setOnClickListener { toggleStorageView() }
+        }
+        addView(viewToggle, LayoutParams(dp(40), dp(40), Gravity.TOP or Gravity.END).apply {
+            setMargins(0, dp(4), dp(4), 0)
+        })
         
         setupChart()
     }
@@ -73,6 +112,12 @@ class SystemMonitorView @JvmOverloads constructor(
                 gridColor = Color.DKGRAY
                 textColor = Color.WHITE
                 granularity = 1f
+                valueFormatter = object : ValueFormatter() {
+                    override fun getFormattedValue(value: Float): String {
+                        val index = value.toInt()
+                        return timestampHistory.getOrNull(index)?.let { timeFormat.format(Date(it)) } ?: ""
+                    }
+                }
             }
             
             // Linke Y-Achse (Prozent) - wird dynamisch angepasst
@@ -126,7 +171,7 @@ class SystemMonitorView @JvmOverloads constructor(
                     val lineHeight = 40f
                     val clickedIndex = ((event.y - legendStartY) / lineHeight).toInt()
                     
-                    val labelOrder = mutableListOf("CPU %", "RAM %", "Temp °C")
+                    val labelOrder = mutableListOf("CPU %", "RAM %", "Temp °C", "Aufnahmeproblem")
                     labelOrder.addAll(diskHistories.keys)
                     
                     if (clickedIndex in labelOrder.indices) {
@@ -151,6 +196,8 @@ class SystemMonitorView @JvmOverloads constructor(
 
     fun updateData(jsonData: JSONObject) {
         try {
+            addToHistory(timestampHistory, System.currentTimeMillis())
+
             // CPU
             val cpuPercent = jsonData.optDouble("cpu_percent", 0.0).toFloat()
             addToHistory(cpuHistory, cpuPercent)
@@ -165,6 +212,9 @@ class SystemMonitorView @JvmOverloads constructor(
             val temp = jsonData.optDouble("temperature_celsius", 0.0).toFloat()
             addToHistory(tempHistory, temp)
             android.util.Log.d("SystemMonitorView", "Temp: $temp°C (history size: ${tempHistory.size})")
+
+            // 100 = in diesem Messintervall trat ein Aufnahmeproblem auf, 0 = unauffällig.
+            addToHistory(healthHistory, if (healthTracker.sample(jsonData)) 100f else 0f)
             
             // Disks
             val disks = jsonData.optJSONArray("disks")
@@ -184,6 +234,8 @@ class SystemMonitorView @JvmOverloads constructor(
                     }
                 }
             }
+
+            updateStorageText(jsonData)
             
             updateChart()
             
@@ -219,6 +271,11 @@ class SystemMonitorView @JvmOverloads constructor(
         if (history.size > historySize) {
             history.removeFirst()
         }
+    }
+
+    private fun addToHistory(history: LinkedList<Long>, value: Long) {
+        history.add(value)
+        if (history.size > historySize) history.removeFirst()
     }
 
     private fun updateChart() {
@@ -297,6 +354,20 @@ class SystemMonitorView @JvmOverloads constructor(
                 axisMaximum = maxTemp + padding
             }
         }
+
+        if (healthHistory.isNotEmpty() && visibleLines["Aufnahmeproblem"] == true) {
+            dataSets.add(LineDataSet(
+                healthHistory.mapIndexed { index, value -> Entry(index.toFloat(), value) },
+                "Aufnahmeproblem"
+            ).apply {
+                color = colorHealth
+                lineWidth = 3f
+                setDrawCircles(false)
+                setDrawValues(false)
+                mode = LineDataSet.Mode.STEPPED
+                axisDependency = YAxis.AxisDependency.LEFT
+            })
+        }
         
         // Disk Datasets (linke Y-Achse)
         diskHistories.entries.forEachIndexed { idx, (mountpoint, history) ->
@@ -320,6 +391,7 @@ class SystemMonitorView @JvmOverloads constructor(
         val allLeftValues = mutableListOf<Float>()
         allLeftValues.addAll(cpuHistory)
         allLeftValues.addAll(ramHistory)
+        allLeftValues.addAll(healthHistory)
         diskHistories.values.forEach { allLeftValues.addAll(it) }
         
         if (allLeftValues.isNotEmpty()) {
@@ -356,6 +428,11 @@ class SystemMonitorView @JvmOverloads constructor(
             label = "Temp °C"
             formColor = if (visibleLines["Temp °C"] == true) colorTemp else Color.argb(80, 244, 67, 54)
         })
+
+        legendEntries.add(LegendEntry().apply {
+            label = "Aufnahmeproblem"
+            formColor = if (visibleLines["Aufnahmeproblem"] == true) colorHealth else Color.argb(80, 255, 0, 255)
+        })
         
         // Disks
         diskHistories.keys.forEachIndexed { idx, mount ->
@@ -385,7 +462,53 @@ class SystemMonitorView @JvmOverloads constructor(
         cpuHistory.clear()
         ramHistory.clear()
         tempHistory.clear()
+        healthHistory.clear()
+        timestampHistory.clear()
         diskHistories.clear()
+        healthTracker.reset()
         chart.clear()
     }
+
+    private fun toggleStorageView() {
+        val showStorage = fileList.visibility != View.VISIBLE
+        fileList.visibility = if (showStorage) View.VISIBLE else View.GONE
+        chart.visibility = if (showStorage) View.GONE else View.VISIBLE
+        viewToggle.setImageResource(
+            if (showStorage) android.R.drawable.ic_menu_view else android.R.drawable.ic_menu_agenda
+        )
+        viewToggle.contentDescription = if (showStorage) "Diagramm anzeigen" else "Dateien und Speicher anzeigen"
+    }
+
+    private fun updateStorageText(jsonData: JSONObject) {
+        val lines = mutableListOf<String>()
+        lines += "SPEICHER"
+        val disks = jsonData.optJSONArray("disks")
+        if (disks != null) {
+            for (i in 0 until disks.length()) {
+                val disk = disks.optJSONObject(i) ?: continue
+                if (isRelevantDisk(disk.optString("mountpoint"), disk.optString("device"))) {
+                    lines += "${disk.optString("mountpoint")}: ${disk.optString("used")} / ${disk.optString("total")} (${disk.optDouble("percent").toInt()} %)"
+                }
+            }
+        }
+        jsonData.optString("disk_space_error").takeIf { it.isNotBlank() }?.let {
+            lines += "⚠ $it"
+        }
+
+        lines += ""
+        lines += "AUFNAHMEN"
+        val files = jsonData.optJSONArray("output_files")
+        if (files == null || files.length() == 0) {
+            lines += "Keine Dateien vorhanden"
+        } else {
+            val entries = mutableListOf<Pair<String, String>>()
+            for (i in 0 until files.length()) {
+                files.optJSONObject(i)?.let { entries += it.optString("name") to it.optString("size") }
+            }
+            entries.sortedByDescending { it.first }.forEach { (name, size) -> lines += "$name  ·  $size" }
+        }
+        fileListText.text = lines.joinToString("\n")
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 }
