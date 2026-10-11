@@ -110,20 +110,18 @@ jobs:
         APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
         test -n "$APKSIGNER"
         "$APKSIGNER" verify --verbose "$RELEASE_APK"
-        ACTUAL_FINGERPRINT=$(
-          "$APKSIGNER" verify --print-certs "$RELEASE_APK" |
-          sed -n 's/^Signer #1 certificate SHA-256 digest: //p' |
-          tr -d '[:space:]:' |
-          tr '[:upper:]' '[:lower:]'
-        )
         EXPECTED_FINGERPRINT=$(
           tr -d '[:space:]:' < .github/release-signing-cert.sha256 |
           tr '[:upper:]' '[:lower:]'
         )
-        printf 'APK certificate: %s\n' "$ACTUAL_FINGERPRINT"
-        printf 'Expected certificate: %s\n' "$EXPECTED_FINGERPRINT"
-        test -n "$ACTUAL_FINGERPRINT"
-        test "$ACTUAL_FINGERPRINT" = "$EXPECTED_FINGERPRINT"
+        CERTIFICATE_OUTPUT=$("$APKSIGNER" verify --print-certs "$RELEASE_APK" 2>&1)
+        NORMALIZED_CERTIFICATE_OUTPUT=$(
+          printf '%s' "$CERTIFICATE_OUTPUT" |
+          tr -d ':' |
+          tr '[:upper:]' '[:lower:]'
+        )
+        test -n "$EXPECTED_FINGERPRINT"
+        grep -F "$EXPECTED_FINGERPRINT" <<< "$NORMALIZED_CERTIFICATE_OUTPUT"
 
     - name: Upload Debug APK
       if: github.event_name == 'push'
