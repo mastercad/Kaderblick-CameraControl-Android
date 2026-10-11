@@ -113,6 +113,7 @@ class SystemMonitorView @JvmOverloads constructor(
             setImageResource(android.R.drawable.ic_dialog_alert)
             setBackgroundColor(Color.parseColor("#CC333333"))
             setColorFilter(Color.GRAY)
+            visibility = View.GONE
             contentDescription = "Qualitätsereignisse anzeigen"
             setOnClickListener { showHealthDialog() }
         }
@@ -285,6 +286,9 @@ class SystemMonitorView @JvmOverloads constructor(
         val hasQualityProblem = health != null && RecordingHealthTracker.COUNTERS.any {
             health.optLong(it, 0L) > 0L
         }
+        val showWarning = status != "ok" || hasQualityProblem
+        healthButton.visibility = if (showWarning) View.VISIBLE else View.GONE
+        if (!showWarning) return
         val color = when {
             status == "error" || health?.optBoolean("power_undervoltage_now", false) == true ->
                 Color.rgb(244, 67, 54)
