@@ -11,15 +11,36 @@ android {
         applicationId = "com.example.cameracontrol"
         minSdk = 24
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 4
+        versionName = "1.2.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+    signingConfigs {
+        val keystorePath = providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull
+        val keystorePassword = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orNull
+        val keyAliasName = providers.environmentVariable("ANDROID_KEY_ALIAS").orNull
+        val keyPasswordValue = providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull
+
+        if (
+            keystorePath != null &&
+            keystorePassword != null &&
+            keyAliasName != null &&
+            keyPasswordValue != null
+        ) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = keystorePassword
+                keyAlias = keyAliasName
+                keyPassword = keyPasswordValue
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
