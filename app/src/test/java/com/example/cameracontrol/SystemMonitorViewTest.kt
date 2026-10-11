@@ -31,26 +31,47 @@ class SystemMonitorViewTest {
 
     @Test
     fun warningButtonRemainsHiddenWithoutQualityEvents() {
-        view.updateData(systemInfo(healthStatus = "ok", eventCount = 0))
+        view.updateData(systemInfo(recordingActive = true, recordingEventCount = 0))
 
         assertEquals(View.GONE, healthButton().visibility)
     }
 
     @Test
-    fun warningButtonAppearsWhenQualityEventExists() {
-        view.updateData(systemInfo(healthStatus = "warning", eventCount = 1))
+    fun warningButtonAppearsForEventInCurrentRecording() {
+        view.updateData(systemInfo(recordingActive = true, recordingEventCount = 1))
 
         assertEquals(View.VISIBLE, healthButton().visibility)
     }
 
     @Test
+    fun warningButtonIsHiddenWithoutActiveRecordingDespiteOldEvents() {
+        view.updateData(systemInfo(
+            recordingActive = false,
+            recordingEventCount = 0,
+            globalEventCount = 42,
+            healthStatus = "warning",
+        ))
+
+        assertEquals(View.GONE, healthButton().visibility)
+    }
+
+    @Test
+    fun warningButtonIsClearedWhenRecordingStops() {
+        view.updateData(systemInfo(recordingActive = true, recordingEventCount = 1))
+        view.updateData(systemInfo(recordingActive = false, recordingEventCount = 1))
+
+        assertEquals(View.GONE, healthButton().visibility)
+    }
+
+    @Test
     fun eventResponseIsRenderedWithTimestampPhaseAndMessage() {
-        view.updateData(systemInfo(healthStatus = "warning", eventCount = 1))
+        view.updateData(systemInfo(recordingActive = true, recordingEventCount = 1))
         val response = JSONObject().apply {
             put("events", org.json.JSONArray().put(JSONObject().apply {
                 put("timestamp", "2026-10-11T12:14:18.074+02:00")
                 put("severity", "warning")
                 put("recording", true)
+                put("recording_health_log", "aufnahme_current_health.jsonl")
                 put("message", "V4L2-Sequenzsprung: 10 Frame(s) fehlen")
             }))
         }
@@ -62,14 +83,35 @@ class SystemMonitorViewTest {
         assertTrue(!text.contains("Keine Ereignisse gespeichert"))
     }
 
-    private fun systemInfo(healthStatus: String, eventCount: Long) = JSONObject().apply {
+    @Test
+    fun eventDialogContainsNoOldDataWithoutRecording() {
+        view.updateData(systemInfo(recordingActive = false, globalEventCount = 12))
+        val response = JSONObject().apply {
+            put("events", org.json.JSONArray().put(JSONObject().apply {
+                put("recording", true)
+                put("message", "Altes Ereignis")
+            }))
+        }
+
+        assertEquals("Keine laufende Aufnahme.", view.formatHealthEvents(response))
+    }
+
+    private fun systemInfo(
+        recordingActive: Boolean,
+        recordingEventCount: Long = 0,
+        globalEventCount: Long = 0,
+        healthStatus: String = "ok",
+    ) = JSONObject().apply {
         put("cpu_percent", 0)
         put("ram_percent", 0)
         put("temperature_celsius", 0)
         put("camera_health", JSONObject().apply {
             put("health_status", healthStatus)
             put("capture_thread_alive", true)
-            put("health_log_event_count", eventCount)
+            put("recording_active", recordingActive)
+            put("health_log_file", if (recordingActive) "aufnahme_current_health.jsonl" else "")
+            put("recording_health_event_count", recordingEventCount)
+            put("health_log_event_count", globalEventCount)
         })
     }
 

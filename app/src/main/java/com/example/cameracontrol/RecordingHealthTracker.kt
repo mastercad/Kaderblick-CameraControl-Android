@@ -37,17 +37,15 @@ class RecordingHealthTracker {
 
     companion object {
         internal val COUNTERS = listOf(
+            "recording_health_event_count",
             "health_event_count",
             "v4l2_sequence_frames_lost",
             "v4l2_timestamp_gaps",
             "v4l2_buffer_errors",
             "invalid_mjpeg_frames",
             "writer_queue_drops",
-            "health_log_drops",
-            "health_log_event_count",
             "audio_xruns",
             "audio_recovery_restarts",
-            "power_event_count",
         )
     }
 }
