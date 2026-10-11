@@ -18,10 +18,10 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       
     - name: Set up JDK 17
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         java-version: '17'
         distribution: 'temurin'
@@ -87,9 +87,15 @@ jobs:
         "$APKSIGNER" verify --verbose "$RELEASE_APK"
         ACTUAL_FINGERPRINT=$(
           "$APKSIGNER" verify --print-certs "$RELEASE_APK" |
-          sed -n 's/^Signer #1 certificate SHA-256 digest: //p'
+          sed -n 's/^Signer #1 certificate SHA-256 digest: //p' |
+          tr -d '[:space:]:' |
+          tr '[:upper:]' '[:lower:]'
         )
-        EXPECTED_FINGERPRINT=$(tr -d '[:space:]' < .github/release-signing-cert.sha256)
+        EXPECTED_FINGERPRINT=$(
+          tr -d '[:space:]:' < .github/release-signing-cert.sha256 |
+          tr '[:upper:]' '[:lower:]'
+        )
+        test -n "$ACTUAL_FINGERPRINT"
         test "$ACTUAL_FINGERPRINT" = "$EXPECTED_FINGERPRINT"
 
     - name: Upload Debug APK
@@ -115,7 +121,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       
     - name: Get version name
       id: get_version
