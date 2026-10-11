@@ -47,6 +47,31 @@ jobs:
         test -n "$ANDROID_KEYSTORE_BASE64"
         printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/cameracontrol-release.jks"
 
+    - name: Verify release keystore certificate
+      if: github.event_name == 'push'
+      env:
+        ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      run: |
+        ACTUAL_FINGERPRINT=$(
+          keytool -exportcert \
+            -keystore "$RUNNER_TEMP/cameracontrol-release.jks" \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+            -alias "$ANDROID_KEY_ALIAS" |
+          openssl x509 -inform DER -noout -fingerprint -sha256 |
+          sed 's/^.*=//' |
+          tr -d '[:space:]:' |
+          tr '[:upper:]' '[:lower:]'
+        )
+        EXPECTED_FINGERPRINT=$(
+          tr -d '[:space:]:' < .github/release-signing-cert.sha256 |
+          tr '[:upper:]' '[:lower:]'
+        )
+        printf 'Keystore certificate: %s\n' "$ACTUAL_FINGERPRINT"
+        printf 'Expected certificate: %s\n' "$EXPECTED_FINGERPRINT"
+        test -n "$ACTUAL_FINGERPRINT"
+        test "$ACTUAL_FINGERPRINT" = "$EXPECTED_FINGERPRINT"
+
     - name: Build Release APK
       if: github.event_name == 'push'
       env:
@@ -95,6 +120,8 @@ jobs:
           tr -d '[:space:]:' < .github/release-signing-cert.sha256 |
           tr '[:upper:]' '[:lower:]'
         )
+        printf 'APK certificate: %s\n' "$ACTUAL_FINGERPRINT"
+        printf 'Expected certificate: %s\n' "$EXPECTED_FINGERPRINT"
         test -n "$ACTUAL_FINGERPRINT"
         test "$ACTUAL_FINGERPRINT" = "$EXPECTED_FINGERPRINT"
 
