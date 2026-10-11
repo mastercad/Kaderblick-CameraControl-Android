@@ -56,6 +56,15 @@ class SystemMonitorViewTest {
     }
 
     @Test
+    fun previewFrameDropsRemainVisibleInChartWithoutShowingWarningButton() {
+        view.updateData(systemInfo(recordingActive = false, cameraEventCount = 0))
+        view.updateData(systemInfo(recordingActive = false, cameraEventCount = 1))
+
+        assertEquals(listOf(0f, 100f), healthHistory().toList())
+        assertEquals(View.GONE, healthButton().visibility)
+    }
+
+    @Test
     fun warningButtonIsClearedWhenRecordingStops() {
         view.updateData(systemInfo(recordingActive = true, recordingEventCount = 1))
         view.updateData(systemInfo(recordingActive = false, recordingEventCount = 1))
@@ -100,6 +109,7 @@ class SystemMonitorViewTest {
         recordingActive: Boolean,
         recordingEventCount: Long = 0,
         globalEventCount: Long = 0,
+        cameraEventCount: Long = 0,
         healthStatus: String = "ok",
     ) = JSONObject().apply {
         put("cpu_percent", 0)
@@ -111,6 +121,7 @@ class SystemMonitorViewTest {
             put("recording_active", recordingActive)
             put("health_log_file", if (recordingActive) "aufnahme_current_health.jsonl" else "")
             put("recording_health_event_count", recordingEventCount)
+            put("health_event_count", cameraEventCount)
             put("health_log_event_count", globalEventCount)
         })
     }
@@ -119,5 +130,12 @@ class SystemMonitorViewTest {
         val field = SystemMonitorView::class.java.getDeclaredField("healthButton")
         field.isAccessible = true
         return field.get(view) as ImageButton
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun healthHistory(): java.util.LinkedList<Float> {
+        val field = SystemMonitorView::class.java.getDeclaredField("healthHistory")
+        field.isAccessible = true
+        return field.get(view) as java.util.LinkedList<Float>
     }
 }

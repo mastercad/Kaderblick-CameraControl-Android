@@ -63,7 +63,6 @@ class SystemMonitorView @JvmOverloads constructor(
     private var recordingActive = false
     private var currentRecordingLog: String? = null
     private var recordingHasQualityProblem = false
-    private var healthHistoryStartIndex = 0
     private val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.GERMANY)
     
     // Sichtbarkeitsstatus der Linien
@@ -209,8 +208,7 @@ class SystemMonitorView @JvmOverloads constructor(
                     val lineHeight = 40f
                     val clickedIndex = ((event.y - legendStartY) / lineHeight).toInt()
                     
-                    val labelOrder = mutableListOf("CPU %", "RAM %", "Temp °C")
-                    if (recordingActive) labelOrder += "Aufnahmeproblem"
+                    val labelOrder = mutableListOf("CPU %", "RAM %", "Temp °C", "Aufnahmeproblem")
                     labelOrder.addAll(diskHistories.keys)
                     
                     if (clickedIndex in labelOrder.indices) {
@@ -236,11 +234,7 @@ class SystemMonitorView @JvmOverloads constructor(
     fun updateData(jsonData: JSONObject) {
         try {
             latestSystemInfo = jsonData
-            val timestampHistoryWasFull = timestampHistory.size >= historySize
             addToHistory(timestampHistory, System.currentTimeMillis())
-            if (timestampHistoryWasFull && recordingActive) {
-                healthHistoryStartIndex = (healthHistoryStartIndex - 1).coerceAtLeast(0)
-            }
             updateRecordingHealth(jsonData)
 
             // CPU
@@ -290,36 +284,29 @@ class SystemMonitorView @JvmOverloads constructor(
         val health = systemInfo.optJSONObject("camera_health")
         val isRecording = health?.optBoolean("recording_active", false) == true
         val recordingLog = health?.optString("health_log_file")?.takeIf { it.isNotBlank() }
+        val problemInSample = healthTracker.sample(systemInfo)
+        addToHistory(healthHistory, if (problemInSample) 100f else 0f)
 
         if (!isRecording) {
             recordingActive = false
             currentRecordingLog = null
             recordingHasQualityProblem = false
-            healthHistory.clear()
-            healthHistoryStartIndex = 0
-            healthTracker.reset()
             healthButton.visibility = View.GONE
             return
         }
         val activeHealth = requireNotNull(health)
 
         if (!recordingActive || recordingLog != currentRecordingLog) {
-            healthHistory.clear()
-            healthHistoryStartIndex = (timestampHistory.size - 1).coerceAtLeast(0)
-            healthTracker.reset()
             recordingHasQualityProblem = false
         }
         recordingActive = true
         currentRecordingLog = recordingLog
 
-        val problemInSample = healthTracker.sample(systemInfo)
         val currentRecordingCountersHaveProblems = RecordingHealthTracker.COUNTERS.any {
             activeHealth.optLong(it, 0L) > 0L
         }
         recordingHasQualityProblem = recordingHasQualityProblem ||
             problemInSample || currentRecordingCountersHaveProblems
-        addToHistory(healthHistory, if (problemInSample) 100f else 0f)
-
         val status = activeHealth.optString("health_status", "ok")
         healthButton.visibility = if (recordingHasQualityProblem) View.VISIBLE else View.GONE
         if (!recordingHasQualityProblem) return
@@ -542,11 +529,9 @@ class SystemMonitorView @JvmOverloads constructor(
             }
         }
 
-        if (recordingActive && healthHistory.isNotEmpty() && visibleLines["Aufnahmeproblem"] == true) {
+        if (healthHistory.isNotEmpty() && visibleLines["Aufnahmeproblem"] == true) {
             dataSets.add(LineDataSet(
-                healthHistory.mapIndexed { index, value ->
-                    Entry((healthHistoryStartIndex + index).toFloat(), value)
-                },
+                healthHistory.mapIndexed { index, value -> Entry(index.toFloat(), value) },
                 "Aufnahmeproblem"
             ).apply {
                 color = colorHealth
@@ -580,7 +565,7 @@ class SystemMonitorView @JvmOverloads constructor(
         val allLeftValues = mutableListOf<Float>()
         allLeftValues.addAll(cpuHistory)
         allLeftValues.addAll(ramHistory)
-        if (recordingActive) allLeftValues.addAll(healthHistory)
+        allLeftValues.addAll(healthHistory)
         diskHistories.values.forEach { allLeftValues.addAll(it) }
         
         if (allLeftValues.isNotEmpty()) {
@@ -618,12 +603,10 @@ class SystemMonitorView @JvmOverloads constructor(
             formColor = if (visibleLines["Temp °C"] == true) colorTemp else Color.argb(80, 244, 67, 54)
         })
 
-        if (recordingActive) {
-            legendEntries.add(LegendEntry().apply {
-                label = "Aufnahmeproblem"
-                formColor = if (visibleLines["Aufnahmeproblem"] == true) colorHealth else Color.argb(80, 255, 0, 255)
-            })
-        }
+        legendEntries.add(LegendEntry().apply {
+            label = "Aufnahmeproblem"
+            formColor = if (visibleLines["Aufnahmeproblem"] == true) colorHealth else Color.argb(80, 255, 0, 255)
+        })
         
         // Disks
         diskHistories.keys.forEachIndexed { idx, mount ->
@@ -660,7 +643,6 @@ class SystemMonitorView @JvmOverloads constructor(
         recordingActive = false
         currentRecordingLog = null
         recordingHasQualityProblem = false
-        healthHistoryStartIndex = 0
         healthButton.visibility = View.GONE
         chart.clear()
     }
