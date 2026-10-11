@@ -37,4 +37,21 @@ class RecordingHealthTrackerTest {
     fun deadCaptureThreadIsAProblem() {
         assertTrue(RecordingHealthTracker().sample(snapshot(hardFailure = true)))
     }
+
+    @Test
+    fun audioRecoveryIncreaseCreatesProblemPulse() {
+        val tracker = RecordingHealthTracker()
+        assertFalse(tracker.sample(snapshot(false, "audio_recovery_restarts" to 0)))
+        assertTrue(tracker.sample(snapshot(false, "audio_recovery_restarts" to 1)))
+    }
+
+    @Test
+    fun currentUndervoltageIsHardFailure() {
+        val health = org.json.JSONObject().apply {
+            put("health_status", "ok")
+            put("capture_thread_alive", true)
+            put("power_undervoltage_now", true)
+        }
+        assertTrue(RecordingHealthTracker().sample(RecordingHealthSnapshot.from(health)))
+    }
 }

@@ -44,6 +44,10 @@ class RecordingHealthTracker {
             "invalid_mjpeg_frames",
             "writer_queue_drops",
             "health_log_drops",
+            "health_log_event_count",
+            "audio_xruns",
+            "audio_recovery_restarts",
+            "power_event_count",
         )
     }
 }
@@ -63,6 +67,8 @@ data class RecordingHealthSnapshot(
                     hasText("capture_error") ||
                     hasText("writer_error") ||
                     hasText("audio_error") ||
+                    health.optBoolean("power_undervoltage_now", false) ||
+                    health.optBoolean("power_throttled_now", false) ||
                     health.optDouble("last_frame_age_s", 0.0) > 2.0,
                 counters = RecordingHealthTracker.COUNTERS.associateWith { health.optLong(it, 0L) },
             )

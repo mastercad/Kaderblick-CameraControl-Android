@@ -115,6 +115,9 @@ class MainActivity : AppCompatActivity() {
             scope = lifecycleScope
         )
 
+        binding.systemMonitor1.configureHealth(camera1BaseUrl, "Kamera 1")
+        binding.systemMonitor2.configureHealth(camera2BaseUrl, "Kamera 2")
+
         systemMonitorService = SystemMonitorService(
             camera1BaseUrl = camera1BaseUrl,
             camera2BaseUrl = camera2BaseUrl,

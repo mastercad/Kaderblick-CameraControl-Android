@@ -1,5 +1,6 @@
 package com.example.cameracontrol
 
+import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Color
 import android.util.AttributeSet
@@ -19,10 +20,17 @@ import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
 import com.github.mikephil.charting.formatter.ValueFormatter
 import org.json.JSONObject
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.LinkedList
 import java.util.Locale
+import java.util.concurrent.TimeUnit
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
 
 class SystemMonitorView @JvmOverloads constructor(
     context: Context,
@@ -34,7 +42,15 @@ class SystemMonitorView @JvmOverloads constructor(
     private val fileList: ScrollView
     private val fileListText: TextView
     private val viewToggle: ImageButton
+    private val healthButton: ImageButton
     private val historySize = 100
+    private var cameraBaseUrl: String? = null
+    private var cameraLabel: String = "Kamera"
+    private var latestSystemInfo: JSONObject? = null
+    private val healthClient = OkHttpClient.Builder()
+        .connectTimeout(3, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.SECONDS)
+        .build()
     
     // Datenhistorie
     private val cpuHistory = LinkedList<Float>()
@@ -92,8 +108,25 @@ class SystemMonitorView @JvmOverloads constructor(
         addView(viewToggle, LayoutParams(dp(40), dp(40), Gravity.TOP or Gravity.END).apply {
             setMargins(0, dp(4), dp(4), 0)
         })
+
+        healthButton = ImageButton(context).apply {
+            setImageResource(android.R.drawable.ic_dialog_alert)
+            setBackgroundColor(Color.parseColor("#CC333333"))
+            setColorFilter(Color.GRAY)
+            contentDescription = "Qualitätsereignisse anzeigen"
+            setOnClickListener { showHealthDialog() }
+        }
+        addView(healthButton, LayoutParams(dp(40), dp(40), Gravity.TOP or Gravity.END).apply {
+            setMargins(0, dp(4), dp(48), 0)
+        })
         
         setupChart()
+    }
+
+    fun configureHealth(baseUrl: String, label: String) {
+        cameraBaseUrl = baseUrl.trimEnd('/')
+        cameraLabel = label
+        healthButton.contentDescription = "Qualitätsereignisse für $label anzeigen"
     }
 
     private fun setupChart() {
@@ -196,6 +229,8 @@ class SystemMonitorView @JvmOverloads constructor(
 
     fun updateData(jsonData: JSONObject) {
         try {
+            latestSystemInfo = jsonData
+            updateHealthButton(jsonData)
             addToHistory(timestampHistory, System.currentTimeMillis())
 
             // CPU
@@ -242,6 +277,113 @@ class SystemMonitorView @JvmOverloads constructor(
         } catch (e: Exception) {
             e.printStackTrace()
         }
+    }
+
+    private fun updateHealthButton(systemInfo: JSONObject) {
+        val health = systemInfo.optJSONObject("camera_health")
+        val status = health?.optString("health_status", "ok") ?: "ok"
+        val hasQualityProblem = health != null && RecordingHealthTracker.COUNTERS.any {
+            health.optLong(it, 0L) > 0L
+        }
+        val color = when {
+            status == "error" || health?.optBoolean("power_undervoltage_now", false) == true ->
+                Color.rgb(244, 67, 54)
+            status == "warning" || hasQualityProblem -> Color.rgb(255, 152, 0)
+            else -> Color.GRAY
+        }
+        healthButton.setColorFilter(color)
+    }
+
+    private fun showHealthDialog() {
+        val baseUrl = cameraBaseUrl
+        if (baseUrl == null) {
+            showHealthText("Qualitätsdiagnose ist noch nicht konfiguriert.")
+            return
+        }
+
+        val loading = AlertDialog.Builder(context)
+            .setTitle("$cameraLabel – Qualitätsereignisse")
+            .setMessage("Ereignisse werden geladen …")
+            .setNegativeButton("Schließen", null)
+            .show()
+        val request = Request.Builder().url("$baseUrl/health/events?limit=200").build()
+        healthClient.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                post {
+                    loading.dismiss()
+                    showHealthText("Ereignisse konnten nicht geladen werden:\n${e.message}")
+                }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                response.use {
+                    val body = it.body?.string()
+                    val text = if (it.isSuccessful && body != null) {
+                        formatHealthEvents(JSONObject(body))
+                    } else {
+                        "Ereignisse konnten nicht geladen werden (HTTP ${it.code})."
+                    }
+                    post {
+                        loading.dismiss()
+                        showHealthText(text)
+                    }
+                }
+            }
+        })
+    }
+
+    private fun formatHealthEvents(response: JSONObject): String {
+        val lines = mutableListOf<String>()
+        val health = latestSystemInfo?.optJSONObject("camera_health")
+        lines += if (health?.optBoolean("recording_active", false) == true) {
+            "Aktuelle Aufnahme: läuft"
+        } else {
+            "Aktuelle Aufnahme: nicht aktiv"
+        }
+        val issues = health?.optJSONArray("health_issues")
+        if (issues != null && issues.length() > 0) {
+            lines += "Aktueller Zustand:"
+            for (index in 0 until issues.length()) {
+                lines += "• ${issues.optString(index)}"
+            }
+        } else {
+            lines += "Aktueller Zustand: keine gemeldete Qualitätsbeeinträchtigung"
+        }
+
+        lines += ""
+        lines += "Gespeicherte Ereignisse (neueste zuerst):"
+        val events = response.optJSONArray("events")
+        if (events == null || events.length() == 0) {
+            lines += "Keine Ereignisse gespeichert."
+        } else {
+            for (index in events.length() - 1 downTo 0) {
+                val event = events.optJSONObject(index) ?: continue
+                val timestamp = event.optString("timestamp")
+                    .replace('T', ' ')
+                val phase = if (event.optBoolean("recording", false)) "Aufnahme" else "Vorschau"
+                val severity = if (event.optString("severity") == "error") "FEHLER" else "WARNUNG"
+                lines += "$timestamp · $phase · $severity"
+                lines += event.optString("message", event.optString("type", "Unbekanntes Ereignis"))
+                lines += ""
+            }
+        }
+        return lines.joinToString("\n").trimEnd()
+    }
+
+    private fun showHealthText(text: String) {
+        val content = TextView(context).apply {
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            setPadding(dp(20), dp(12), dp(20), dp(12))
+            setTextIsSelectable(true)
+            this.text = text
+        }
+        val scroll = ScrollView(context).apply { addView(content) }
+        AlertDialog.Builder(context)
+            .setTitle("$cameraLabel – Qualitätsereignisse")
+            .setView(scroll)
+            .setPositiveButton("Schließen", null)
+            .show()
     }
 
     private fun isRelevantDisk(mountpoint: String, device: String): Boolean {
