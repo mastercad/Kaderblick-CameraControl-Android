@@ -284,10 +284,10 @@ class SystemMonitorView @JvmOverloads constructor(
         val health = systemInfo.optJSONObject("camera_health")
         val isRecording = health?.optBoolean("recording_active", false) == true
         val recordingLog = health?.optString("health_log_file")?.takeIf { it.isNotBlank() }
-        val problemInSample = healthTracker.sample(systemInfo)
-        addToHistory(healthHistory, if (problemInSample) 100f else 0f)
 
         if (!isRecording) {
+            addToHistory(healthHistory, 0f)
+            healthTracker.reset()
             recordingActive = false
             currentRecordingLog = null
             recordingHasQualityProblem = false
@@ -295,16 +295,22 @@ class SystemMonitorView @JvmOverloads constructor(
             return
         }
         val activeHealth = requireNotNull(health)
+        val recordingStarted = !recordingActive || recordingLog != currentRecordingLog
 
-        if (!recordingActive || recordingLog != currentRecordingLog) {
+        if (recordingStarted) {
+            healthTracker.reset()
             recordingHasQualityProblem = false
         }
         recordingActive = true
         currentRecordingLog = recordingLog
 
+        val problemInSample = healthTracker.sample(systemInfo)
         val currentRecordingCountersHaveProblems = RecordingHealthTracker.COUNTERS.any {
             activeHealth.optLong(it, 0L) > 0L
         }
+        val chartProblem = problemInSample ||
+            (recordingStarted && currentRecordingCountersHaveProblems)
+        addToHistory(healthHistory, if (chartProblem) 100f else 0f)
         recordingHasQualityProblem = recordingHasQualityProblem ||
             problemInSample || currentRecordingCountersHaveProblems
         val status = activeHealth.optString("health_status", "ok")

@@ -56,11 +56,25 @@ class SystemMonitorViewTest {
     }
 
     @Test
-    fun previewFrameDropsRemainVisibleInChartWithoutShowingWarningButton() {
+    fun previewFrameDropsAreIgnoredByRecordingProblemChart() {
         view.updateData(systemInfo(recordingActive = false, cameraEventCount = 0))
         view.updateData(systemInfo(recordingActive = false, cameraEventCount = 1))
 
-        assertEquals(listOf(0f, 100f), healthHistory().toList())
+        assertEquals(listOf(0f, 0f), healthHistory().toList())
+        assertEquals(View.GONE, healthButton().visibility)
+    }
+
+    @Test
+    fun recordingDropRemainsInChartAfterRecordingStops() {
+        view.updateData(systemInfo(recordingActive = false, cameraEventCount = 7))
+        view.updateData(systemInfo(
+            recordingActive = true,
+            recordingEventCount = 1,
+            cameraEventCount = 1,
+        ))
+        view.updateData(systemInfo(recordingActive = false, cameraEventCount = 8))
+
+        assertEquals(listOf(0f, 100f, 0f), healthHistory().toList())
         assertEquals(View.GONE, healthButton().visibility)
     }
 
