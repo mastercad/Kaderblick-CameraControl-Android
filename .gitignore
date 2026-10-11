@@ -35,6 +35,8 @@ local.properties
 # Signing Keystore
 *.jks
 *.keystore
+/signing/cameracontrol-release.jks
+/signing/credentials
 
 # VS Code Editor-Einstellungen
 .vscode/
