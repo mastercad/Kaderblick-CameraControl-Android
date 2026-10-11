@@ -50,6 +50,49 @@ class RecordingHealthTracker {
     }
 }
 
+/**
+ * Tracks only faults in the camera/V4L2 source shared by preview and recording.
+ * Preview transport or rendering failures are intentionally not part of this tracker.
+ */
+class CaptureSourceHealthTracker {
+    private val previousCounters = mutableMapOf<String, Long>()
+    private var initialized = false
+
+    fun sample(systemInfo: JSONObject): Boolean {
+        val health = systemInfo.optJSONObject("camera_health") ?: return false
+        fun hasText(key: String): Boolean =
+            !health.isNull(key) && health.optString(key).isNotBlank() && health.optString(key) != "null"
+
+        val hardFailure = !health.optBoolean("capture_thread_alive", true) ||
+            hasText("capture_error") ||
+            health.optDouble("last_frame_age_s", 0.0) > 2.0
+        var counterIncreased = false
+        COUNTERS.forEach { key ->
+            val current = health.optLong(key, 0L)
+            val previous = previousCounters.put(key, current)
+            if (initialized && previous != null && current > previous) {
+                counterIncreased = true
+            }
+        }
+        initialized = true
+        return hardFailure || counterIncreased
+    }
+
+    fun reset() {
+        previousCounters.clear()
+        initialized = false
+    }
+
+    companion object {
+        internal val COUNTERS = listOf(
+            "v4l2_sequence_frames_lost",
+            "v4l2_timestamp_gaps",
+            "v4l2_buffer_errors",
+            "invalid_mjpeg_frames",
+        )
+    }
+}
+
 data class RecordingHealthSnapshot(
     val hardFailure: Boolean,
     val counters: Map<String, Long>,

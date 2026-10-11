@@ -56,9 +56,18 @@ class SystemMonitorViewTest {
     }
 
     @Test
-    fun previewFrameDropsAreIgnoredByRecordingProblemChart() {
-        view.updateData(systemInfo(recordingActive = false, cameraEventCount = 0))
-        view.updateData(systemInfo(recordingActive = false, cameraEventCount = 1))
+    fun cameraSourceDropsShowRecordingRiskWithoutActiveRecording() {
+        view.updateData(systemInfo(recordingActive = false, lostFrames = 0))
+        view.updateData(systemInfo(recordingActive = false, lostFrames = 1))
+
+        assertEquals(listOf(0f, 100f), healthHistory().toList())
+        assertEquals(View.GONE, healthButton().visibility)
+    }
+
+    @Test
+    fun previewDeliveryDropsAreNotShownAsRecordingRisk() {
+        view.updateData(systemInfo(recordingActive = false, previewDeliveryDrops = 0))
+        view.updateData(systemInfo(recordingActive = false, previewDeliveryDrops = 5))
 
         assertEquals(listOf(0f, 0f), healthHistory().toList())
         assertEquals(View.GONE, healthButton().visibility)
@@ -124,6 +133,8 @@ class SystemMonitorViewTest {
         recordingEventCount: Long = 0,
         globalEventCount: Long = 0,
         cameraEventCount: Long = 0,
+        lostFrames: Long = 0,
+        previewDeliveryDrops: Long = 0,
         healthStatus: String = "ok",
     ) = JSONObject().apply {
         put("cpu_percent", 0)
@@ -136,6 +147,8 @@ class SystemMonitorViewTest {
             put("health_log_file", if (recordingActive) "aufnahme_current_health.jsonl" else "")
             put("recording_health_event_count", recordingEventCount)
             put("health_event_count", cameraEventCount)
+            put("v4l2_sequence_frames_lost", lostFrames)
+            put("preview_delivery_drops", previewDeliveryDrops)
             put("health_log_event_count", globalEventCount)
         })
     }

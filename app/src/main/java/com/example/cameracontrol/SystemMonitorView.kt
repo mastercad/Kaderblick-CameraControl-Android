@@ -59,7 +59,8 @@ class SystemMonitorView @JvmOverloads constructor(
     private val healthHistory = LinkedList<Float>()
     private val timestampHistory = LinkedList<Long>()
     private val diskHistories = mutableMapOf<String, LinkedList<Float>>()
-    private val healthTracker = RecordingHealthTracker()
+    private val captureSourceHealthTracker = CaptureSourceHealthTracker()
+    private val recordingHealthTracker = RecordingHealthTracker()
     private var recordingActive = false
     private var currentRecordingLog: String? = null
     private var recordingHasQualityProblem = false
@@ -70,7 +71,7 @@ class SystemMonitorView @JvmOverloads constructor(
         "CPU %" to true,
         "RAM %" to true,
         "Temp °C" to true,
-        "Aufnahmeproblem" to true,
+        "Aufnahmerisiko" to true,
     )
     
     // Farben für die Linien
@@ -208,7 +209,7 @@ class SystemMonitorView @JvmOverloads constructor(
                     val lineHeight = 40f
                     val clickedIndex = ((event.y - legendStartY) / lineHeight).toInt()
                     
-                    val labelOrder = mutableListOf("CPU %", "RAM %", "Temp °C", "Aufnahmeproblem")
+                    val labelOrder = mutableListOf("CPU %", "RAM %", "Temp °C", "Aufnahmerisiko")
                     labelOrder.addAll(diskHistories.keys)
                     
                     if (clickedIndex in labelOrder.indices) {
@@ -284,10 +285,11 @@ class SystemMonitorView @JvmOverloads constructor(
         val health = systemInfo.optJSONObject("camera_health")
         val isRecording = health?.optBoolean("recording_active", false) == true
         val recordingLog = health?.optString("health_log_file")?.takeIf { it.isNotBlank() }
+        val sourceProblemInSample = captureSourceHealthTracker.sample(systemInfo)
 
         if (!isRecording) {
-            addToHistory(healthHistory, 0f)
-            healthTracker.reset()
+            addToHistory(healthHistory, if (sourceProblemInSample) 100f else 0f)
+            recordingHealthTracker.reset()
             recordingActive = false
             currentRecordingLog = null
             recordingHasQualityProblem = false
@@ -298,21 +300,21 @@ class SystemMonitorView @JvmOverloads constructor(
         val recordingStarted = !recordingActive || recordingLog != currentRecordingLog
 
         if (recordingStarted) {
-            healthTracker.reset()
+            recordingHealthTracker.reset()
             recordingHasQualityProblem = false
         }
         recordingActive = true
         currentRecordingLog = recordingLog
 
-        val problemInSample = healthTracker.sample(systemInfo)
+        val recordingProblemInSample = recordingHealthTracker.sample(systemInfo)
         val currentRecordingCountersHaveProblems = RecordingHealthTracker.COUNTERS.any {
             activeHealth.optLong(it, 0L) > 0L
         }
-        val chartProblem = problemInSample ||
+        val chartProblem = sourceProblemInSample || recordingProblemInSample ||
             (recordingStarted && currentRecordingCountersHaveProblems)
         addToHistory(healthHistory, if (chartProblem) 100f else 0f)
         recordingHasQualityProblem = recordingHasQualityProblem ||
-            problemInSample || currentRecordingCountersHaveProblems
+            recordingProblemInSample || currentRecordingCountersHaveProblems
         val status = activeHealth.optString("health_status", "ok")
         healthButton.visibility = if (recordingHasQualityProblem) View.VISIBLE else View.GONE
         if (!recordingHasQualityProblem) return
@@ -535,10 +537,10 @@ class SystemMonitorView @JvmOverloads constructor(
             }
         }
 
-        if (healthHistory.isNotEmpty() && visibleLines["Aufnahmeproblem"] == true) {
+        if (healthHistory.isNotEmpty() && visibleLines["Aufnahmerisiko"] == true) {
             dataSets.add(LineDataSet(
                 healthHistory.mapIndexed { index, value -> Entry(index.toFloat(), value) },
-                "Aufnahmeproblem"
+                "Aufnahmerisiko"
             ).apply {
                 color = colorHealth
                 lineWidth = 3f
@@ -610,8 +612,8 @@ class SystemMonitorView @JvmOverloads constructor(
         })
 
         legendEntries.add(LegendEntry().apply {
-            label = "Aufnahmeproblem"
-            formColor = if (visibleLines["Aufnahmeproblem"] == true) colorHealth else Color.argb(80, 255, 0, 255)
+            label = "Aufnahmerisiko"
+            formColor = if (visibleLines["Aufnahmerisiko"] == true) colorHealth else Color.argb(80, 255, 0, 255)
         })
         
         // Disks
@@ -645,7 +647,8 @@ class SystemMonitorView @JvmOverloads constructor(
         healthHistory.clear()
         timestampHistory.clear()
         diskHistories.clear()
-        healthTracker.reset()
+        captureSourceHealthTracker.reset()
+        recordingHealthTracker.reset()
         recordingActive = false
         currentRecordingLog = null
         recordingHasQualityProblem = false
