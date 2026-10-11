@@ -5,6 +5,7 @@ import android.view.View
 import android.widget.ImageButton
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -40,6 +41,25 @@ class SystemMonitorViewTest {
         view.updateData(systemInfo(healthStatus = "warning", eventCount = 1))
 
         assertEquals(View.VISIBLE, healthButton().visibility)
+    }
+
+    @Test
+    fun eventResponseIsRenderedWithTimestampPhaseAndMessage() {
+        view.updateData(systemInfo(healthStatus = "warning", eventCount = 1))
+        val response = JSONObject().apply {
+            put("events", org.json.JSONArray().put(JSONObject().apply {
+                put("timestamp", "2026-10-11T12:14:18.074+02:00")
+                put("severity", "warning")
+                put("recording", true)
+                put("message", "V4L2-Sequenzsprung: 10 Frame(s) fehlen")
+            }))
+        }
+
+        val text = view.formatHealthEvents(response)
+
+        assertTrue(text.contains("2026-10-11 12:14:18.074+02:00 · Aufnahme · WARNUNG"))
+        assertTrue(text.contains("V4L2-Sequenzsprung: 10 Frame(s) fehlen"))
+        assertTrue(!text.contains("Keine Ereignisse gespeichert"))
     }
 
     private fun systemInfo(healthStatus: String, eventCount: Long) = JSONObject().apply {

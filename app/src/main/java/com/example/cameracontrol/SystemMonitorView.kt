@@ -322,10 +322,14 @@ class SystemMonitorView @JvmOverloads constructor(
             override fun onResponse(call: Call, response: Response) {
                 response.use {
                     val body = it.body?.string()
-                    val text = if (it.isSuccessful && body != null) {
-                        formatHealthEvents(JSONObject(body))
-                    } else {
-                        "Ereignisse konnten nicht geladen werden (HTTP ${it.code})."
+                    val text = try {
+                        if (it.isSuccessful && body != null) {
+                            formatHealthEvents(JSONObject(body))
+                        } else {
+                            "Ereignisse konnten nicht geladen werden (HTTP ${it.code})."
+                        }
+                    } catch (error: Exception) {
+                        "Ereignisantwort konnte nicht verarbeitet werden:\n${error.message}"
                     }
                     post {
                         loading.dismiss()
@@ -336,7 +340,7 @@ class SystemMonitorView @JvmOverloads constructor(
         })
     }
 
-    private fun formatHealthEvents(response: JSONObject): String {
+    internal fun formatHealthEvents(response: JSONObject): String {
         val lines = mutableListOf<String>()
         val health = latestSystemInfo?.optJSONObject("camera_health")
         lines += if (health?.optBoolean("recording_active", false) == true) {
@@ -376,7 +380,6 @@ class SystemMonitorView @JvmOverloads constructor(
 
     private fun showHealthText(text: String) {
         val content = TextView(context).apply {
-            setTextColor(Color.WHITE)
             textSize = 14f
             setPadding(dp(20), dp(12), dp(20), dp(12))
             setTextIsSelectable(true)
