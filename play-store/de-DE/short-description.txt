@@ -1,0 +1,1 @@
+Steuerungs-App nur für das Kaderblick-Kamerasystem im lokalen Netzwerk.

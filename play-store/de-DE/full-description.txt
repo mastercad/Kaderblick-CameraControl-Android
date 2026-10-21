@@ -1,0 +1,13 @@
+Kaderblick CameraControl ist die Steuerungs-App für das Kaderblick-Kamerasystem.
+
+WICHTIG: Diese App ist ausschließlich in Verbindung mit einem kompatiblen Kaderblick-Kamerasystem sinnvoll und nutzbar. Sie ist keine eigenständige Kamera-App. Das Android-Gerät und das Kaderblick-Kamerasystem müssen sich im selben lokalen Netzwerk befinden.
+
+CameraControl verbindet sich im lokalen Netzwerk mit der cameraAPI des Kaderblick-Systems und ermöglicht:
+
+• Live-Vorschau von bis zu zwei Kameras
+• Steuerung der horizontalen und vertikalen Kamerabewegung
+• Starten und Stoppen von Videoaufnahmen
+• Anpassung unterstützter Kameraeinstellungen
+• Anzeige des Kamera- und Systemstatus
+
+Ohne ein eingerichtetes Kaderblick-Kamerasystem sind die Kameraübertragung und die Steuerungsfunktionen nicht verfügbar.

@@ -1,6 +1,11 @@
 # CameraControl 📷🎮
 
-Eine professionelle Android-App zur Fernsteuerung von motorisierten Kamera-Rigs mit Echtzeit-Video-Streaming und präziser Hardware-Kontrolle.
+Eine professionelle Android-App zur Fernsteuerung des Kaderblick-Kamerasystems mit Echtzeit-Video-Streaming und präziser Hardware-Kontrolle.
+
+> **Wichtig:** CameraControl ist ausschließlich als Begleit-App für ein kompatibles
+> Kaderblick-Kamerasystem vorgesehen. Ohne dieses Kamerasystem und dessen
+> `cameraAPI` im selben lokalen Netzwerk bietet die App keine nutzbare
+> Kamerafunktion.
 
 ![version](https://img.shields.io/github/v/tag/mastercad/Kaderblick-CameraControl-Android) ![platform](https://img.shields.io/badge/platform-Android_24+-green) ![kotlin](https://img.shields.io/badge/kotlin-v1.9-purple) ![license](https://img.shields.io/badge/license-MIT-blue)
 
