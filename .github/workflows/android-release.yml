@@ -2,187 +2,69 @@ name: Android CI/CD
 
 on:
   push:
-    branches: [ main, master ]
-    tags:
-      - 'v*'
+    branches: [main]
   pull_request:
-    branches: [ main, master ]
+    branches: [main]
 
 concurrency:
-  group: android-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.event_name == 'push' && 'google-play-production' || format('check-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v5
-      
-    - name: Set up JDK 17
-      uses: actions/setup-java@v5
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-        cache: gradle
-        
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
-
-    - name: Run unit tests
-      run: ./gradlew test --stacktrace
-
-    - name: Run Android lint
-      run: ./gradlew lint --stacktrace
-
-    - name: Build Debug APK
-      run: ./gradlew assembleDebug --stacktrace
-
-    - name: Restore release keystore
-      if: github.event_name == 'push'
-      env:
-        ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-      run: |
-        test -n "$ANDROID_KEYSTORE_BASE64"
-        printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/cameracontrol-release.jks"
-
-    - name: Verify release keystore certificate
-      if: github.event_name == 'push'
-      env:
-        ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-        ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-      run: |
-        ACTUAL_FINGERPRINT=$(
-          keytool -exportcert \
-            -keystore "$RUNNER_TEMP/cameracontrol-release.jks" \
-            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
-            -alias "$ANDROID_KEY_ALIAS" |
-          openssl x509 -inform DER -noout -fingerprint -sha256 |
-          sed 's/^.*=//' |
-          tr -d '[:space:]:' |
-          tr '[:upper:]' '[:lower:]'
-        )
-        EXPECTED_FINGERPRINT=$(
-          tr -d '[:space:]:' < .github/release-signing-cert.sha256 |
-          tr '[:upper:]' '[:lower:]'
-        )
-        printf 'Keystore certificate: %s\n' "$ACTUAL_FINGERPRINT"
-        printf 'Expected certificate: %s\n' "$EXPECTED_FINGERPRINT"
-        test -n "$ACTUAL_FINGERPRINT"
-        test "$ACTUAL_FINGERPRINT" = "$EXPECTED_FINGERPRINT"
-
-    - name: Build Release APK
-      if: github.event_name == 'push'
-      env:
-        ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/cameracontrol-release.jks
-        ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-        ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-        ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-      run: ./gradlew assembleRelease --stacktrace
-
-    - name: Get version name
-      if: github.event_name == 'push'
-      id: get_version
-      run: |
-        VERSION_NAME=$(grep "versionName" app/build.gradle.kts | awk -F'"' '{print $2}')
-        VERSION_CODE=$(grep "versionCode" app/build.gradle.kts | awk '{print $3}')
-        echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
-        echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
-
-    - name: Verify release tag matches app version
-      if: startsWith(github.ref, 'refs/tags/')
-      env:
-        VERSION_NAME: ${{ steps.get_version.outputs.version_name }}
-      run: test "$GITHUB_REF_NAME" = "v$VERSION_NAME"
-
-    - name: Rename APKs
-      if: github.event_name == 'push'
-      run: |
-        mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/CameraControl-v${{ steps.get_version.outputs.version_name }}-debug.apk
-        mv app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/CameraControl-v${{ steps.get_version.outputs.version_name }}-release.apk
-
-    - name: Verify release signature
-      if: github.event_name == 'push'
-      env:
-        RELEASE_APK: app/build/outputs/apk/release/CameraControl-v${{ steps.get_version.outputs.version_name }}-release.apk
-      run: |
-        APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
-        test -n "$APKSIGNER"
-        "$APKSIGNER" verify --verbose "$RELEASE_APK"
-        EXPECTED_FINGERPRINT=$(
-          tr -d '[:space:]:' < .github/release-signing-cert.sha256 |
-          tr '[:upper:]' '[:lower:]'
-        )
-        CERTIFICATE_OUTPUT=$("$APKSIGNER" verify --print-certs "$RELEASE_APK" 2>&1)
-        NORMALIZED_CERTIFICATE_OUTPUT=$(
-          printf '%s' "$CERTIFICATE_OUTPUT" |
-          tr -d ':' |
-          tr '[:upper:]' '[:lower:]'
-        )
-        test -n "$EXPECTED_FINGERPRINT"
-        grep -F "$EXPECTED_FINGERPRINT" <<< "$NORMALIZED_CERTIFICATE_OUTPUT"
-
-    - name: Upload Debug APK
-      if: github.event_name == 'push'
-      uses: actions/upload-artifact@v4
-      with:
-        name: CameraControl-debug
-        path: app/build/outputs/apk/debug/CameraControl-*.apk
-
-    - name: Upload Release APK
-      if: github.event_name == 'push'
-      uses: actions/upload-artifact@v4
-      with:
-        name: CameraControl-release
-        path: app/build/outputs/apk/release/CameraControl-*.apk
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
     permissions:
-      contents: write
-    
+      contents: read
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v5
-      
-    - name: Get version name
-      id: get_version
-      run: |
-        VERSION_NAME=$(grep "versionName" app/build.gradle.kts | awk -F'"' '{print $2}')
-        echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
-        
-    - name: Download Release APK
-      uses: actions/download-artifact@v4
-      with:
-        name: CameraControl-release
-        path: ./apks
-        
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: v${{ steps.get_version.outputs.version_name }}
-        name: CameraControl v${{ steps.get_version.outputs.version_name }}
-        body: |
-          ## CameraControl Release v${{ steps.get_version.outputs.version_name }}
-          
-          ### Download
-          - **Release APK**: Signierte Version für Installation und Updates
-          
-          ### Installation
-          1. APK herunterladen
-          2. "Unbekannte Quellen" in Android-Einstellungen erlauben
-          3. APK installieren
-          
-          ### Änderungen
-          Automatischer Build vom main Branch
-          
-          **Commit**: ${{ github.sha }}
-        files: |
-          ./apks/*-release.apk
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: gradle/actions/wrapper-validation@v4
+      - name: Run unit tests and lint
+        run: ./gradlew test lint --stacktrace
+      - name: Set unique Play Store version code
+        if: github.event_name == 'push'
+        run: echo "CI_VERSION_CODE=$((100000 + GITHUB_RUN_NUMBER * 10 + GITHUB_RUN_ATTEMPT))" >> "$GITHUB_ENV"
+      - name: Restore release keystore
+        if: github.event_name == 'push'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/cameracontrol-release.jks"
+      - name: Verify release keystore certificate
+        if: github.event_name == 'push'
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          ACTUAL_FINGERPRINT=$(keytool -exportcert -keystore "$RUNNER_TEMP/cameracontrol-release.jks" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" | openssl x509 -inform DER -noout -fingerprint -sha256 | sed 's/^.*=//' | tr -d '[:space:]:' | tr '[:upper:]' '[:lower:]')
+          EXPECTED_FINGERPRINT=$(tr -d '[:space:]:' < .github/release-signing-cert.sha256 | tr '[:upper:]' '[:lower:]')
+          test -n "$ACTUAL_FINGERPRINT"
+          test "$ACTUAL_FINGERPRINT" = "$EXPECTED_FINGERPRINT"
+      - name: Build signed release bundle
+        if: github.event_name == 'push'
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/cameracontrol-release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew bundleRelease --stacktrace
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push'
+        with:
+          name: camera-control-${{ env.CI_VERSION_CODE }}
+          path: app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+      - name: Publish to Google Play production
+        if: github.event_name == 'push'
+        uses: r0adkll/upload-google-play@v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.example.cameracontrol
+          releaseFiles: app/build/outputs/bundle/release/app-release.aab
+          tracks: production
+          status: completed

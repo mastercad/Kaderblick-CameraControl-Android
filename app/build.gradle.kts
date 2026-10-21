@@ -10,8 +10,8 @@ android {
     defaultConfig {
         applicationId = "com.example.cameracontrol"
         minSdk = 24
-        targetSdk = 35
-        versionCode = 9
+        targetSdk = 36
+        versionCode = System.getenv("CI_VERSION_CODE")?.toIntOrNull() ?: 9
         versionName = "1.2.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
