@@ -64,7 +64,7 @@ jobs:
         uses: r0adkll/upload-google-play@v1.1.5
         with:
           serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
-          packageName: com.example.cameracontrol
+          packageName: de.kaderblick.cameracontrol
           releaseFiles: app/build/outputs/bundle/release/app-release.aab
           tracks: production
           status: completed

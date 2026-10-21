@@ -8,7 +8,7 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.example.cameracontrol"
+        applicationId = "de.kaderblick.cameracontrol"
         minSdk = 24
         targetSdk = 36
         versionCode = System.getenv("CI_VERSION_CODE")?.toIntOrNull() ?: 9

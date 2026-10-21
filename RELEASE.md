@@ -15,6 +15,6 @@ Erforderliche GitHub-Actions-Secrets:
   Play-Console-Dienstkontos
 
 Das Dienstkonto muss in der Google Play Console Zugriff auf
-`com.example.cameracontrol` und die Berechtigung zur Veröffentlichung in
+`de.kaderblick.cameracontrol` und die Berechtigung zur Veröffentlichung in
 Production besitzen. Die App muss vor dem ersten API-Upload einmal in der Play
 Console angelegt worden sein.
