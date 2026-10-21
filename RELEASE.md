@@ -18,3 +18,8 @@ Das Dienstkonto muss in der Google Play Console Zugriff auf
 `de.kaderblick.cameracontrol` und die Berechtigung zur Veröffentlichung in
 Production besitzen. Die App muss vor dem ersten API-Upload einmal in der Play
 Console angelegt worden sein.
+
+Solange Google Play die App noch als Entwurf führt, kann der Workflow manuell
+mit `release_status=draft` gestartet werden. Nach dem ersten Rollout in der Play
+Console veröffentlichen normale Pushes auf `main` wieder automatisch mit dem
+Status `completed`.
