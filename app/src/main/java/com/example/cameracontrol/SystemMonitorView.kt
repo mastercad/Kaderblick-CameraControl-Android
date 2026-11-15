@@ -283,7 +283,10 @@ class SystemMonitorView @JvmOverloads constructor(
 
     private fun updateRecordingHealth(systemInfo: JSONObject) {
         val health = systemInfo.optJSONObject("camera_health")
-        val isRecording = health?.optBoolean("recording_active", false) == true
+        val isRecording = health?.optBoolean(
+            "recording_requested",
+            health?.optBoolean("recording_active", false) ?: false,
+        ) == true
         val recordingLog = health?.optString("health_log_file")?.takeIf { it.isNotBlank() }
         val sourceProblemInSample = captureSourceHealthTracker.sample(systemInfo)
 
@@ -378,10 +381,17 @@ class SystemMonitorView @JvmOverloads constructor(
     internal fun formatHealthEvents(response: JSONObject): String {
         val lines = mutableListOf<String>()
         val health = latestSystemInfo?.optJSONObject("camera_health")
-        if (health?.optBoolean("recording_active", false) != true) {
+        if (health?.optBoolean(
+                "recording_requested",
+                health?.optBoolean("recording_active", false) ?: false,
+            ) != true) {
             return "Keine laufende Aufnahme."
         }
-        lines += "Aktuelle Aufnahme: läuft"
+        lines += if (health.optString("recording_state", "idle") == "recording") {
+            "Aktuelle Aufnahme: läuft"
+        } else {
+            "Aktuelle Aufnahme: UNTERBROCHEN – Wiederherstellung läuft"
+        }
         val issues = health?.optJSONArray("health_issues")
         if (issues != null && issues.length() > 0) {
             lines += "Aktueller Zustand:"

@@ -544,14 +544,14 @@ class CameraController(
     }
 
     fun retrieveRecordingStatus(onResult: (isRecording: Boolean) -> Unit) {
-        scope.launch(Dispatchers.IO) {
-            val baseUrl = when (activeMode) {
-                ControlMode.CAMERA_1 -> camera1BaseUrl
-                ControlMode.CAMERA_2 -> camera2BaseUrl
-                ControlMode.BOTH -> camera1BaseUrl // Bei BOTH: Kamera 1 prüfen
+        when (activeMode) {
+            ControlMode.CAMERA_1 -> retrieveRecordingStatus(camera1BaseUrl, onResult)
+            ControlMode.CAMERA_2 -> retrieveRecordingStatus(camera2BaseUrl, onResult)
+            ControlMode.BOTH -> retrieveRecordingStatus(camera1BaseUrl) { camera1Requested ->
+                retrieveRecordingStatus(camera2BaseUrl) { camera2Requested ->
+                    onResult(camera1Requested || camera2Requested)
+                }
             }
-            
-            retrieveRecordingStatus(baseUrl, onResult)
         }
     }
     
@@ -567,10 +567,13 @@ class CameraController(
                     if (response.isSuccessful) {
                         val json = JSONObject(response.body?.string() ?: "{}")
                         val recording = json.optJSONObject("recording")
-                        val isActive = recording?.optBoolean("active", false) ?: false
+                        val isRequested = recording?.optBoolean(
+                            "requested",
+                            recording?.optBoolean("active", false) ?: false,
+                        ) ?: false
                         
                         scope.launch(Dispatchers.Main) {
-                            onResult(isActive)
+                            onResult(isRequested)
                         }
                     } else {
                         scope.launch(Dispatchers.Main) {
@@ -615,6 +618,11 @@ class CameraController(
 
                         val status = CameraHealthStatus(
                             isRecording = recording?.optBoolean("active", false) ?: false,
+                            recordingRequested = recording?.optBoolean(
+                                "requested",
+                                recording?.optBoolean("active", false) ?: false,
+                            ) ?: false,
+                            recordingState = recording?.optString("state", "idle") ?: "idle",
                             captureThreadAlive = cs?.optBoolean("capture_thread_alive", false) ?: false,
                             framesWritten = cs?.optInt("frames_written", 0) ?: 0,
                             lastFrameAgeS = if (cs != null && !cs.isNull("last_frame_age_s"))

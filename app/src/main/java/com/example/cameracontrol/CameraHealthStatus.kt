@@ -14,6 +14,8 @@ package com.example.cameracontrol
  */
 data class CameraHealthStatus(
     val isRecording: Boolean,
+    val recordingRequested: Boolean,
+    val recordingState: String,
     val captureThreadAlive: Boolean,
     val framesWritten: Int,
     val lastFrameAgeS: Double?,
@@ -34,10 +36,12 @@ data class CameraHealthStatus(
     val errorSummary: String?
         get() {
             val errors = mutableListOf<String>()
+            if (recordingRequested && !isRecording)
+                errors.add("Aufnahme unterbrochen – automatische Wiederherstellung läuft")
             if (!captureThreadAlive) errors.add("Capture-Thread tot")
             captureError?.let { errors.add("Video: $it") }
             audioError?.let { errors.add("Audio: $it") }
-            if (isRecording && (videoFileBytes ?: 0L) == 0L && framesWritten == 0)
+            if (recordingRequested && (videoFileBytes ?: 0L) == 0L && framesWritten == 0)
                 errors.add("Keine Frames geschrieben – Kamera liefert kein Bild!")
             return errors.joinToString(" | ").ifEmpty { null }
         }

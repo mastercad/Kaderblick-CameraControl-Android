@@ -11,6 +11,8 @@ class CameraHealthStatusTest {
 
     private fun status(
         isRecording: Boolean = false,
+        recordingRequested: Boolean = isRecording,
+        recordingState: String = if (isRecording) "recording" else "idle",
         captureThreadAlive: Boolean = true,
         framesWritten: Int = 100,
         lastFrameAgeS: Double? = 0.1,
@@ -20,6 +22,8 @@ class CameraHealthStatusTest {
         videoFileBytes: Long? = 1024L,
     ) = CameraHealthStatus(
         isRecording = isRecording,
+        recordingRequested = recordingRequested,
+        recordingState = recordingState,
         captureThreadAlive = captureThreadAlive,
         framesWritten = framesWritten,
         lastFrameAgeS = lastFrameAgeS,
@@ -175,5 +179,17 @@ class CameraHealthStatusTest {
         // captureThreadAlive=true, keine Fehler → kein errorSummary (auch wenn nicht recording)
         val s = status(isRecording = false, captureThreadAlive = true, captureError = null, audioError = null)
         assertNull(s.errorSummary)
+    }
+
+    @Test
+    fun errorSummary_reportsRecoveryWhileSessionRemainsRequested() {
+        val s = status(
+            isRecording = false,
+            recordingRequested = true,
+            recordingState = "recovering",
+            captureError = "select timeout",
+        )
+        assertTrue(s.errorSummary!!.contains("Wiederherstellung"))
+        assertTrue(s.errorSummary!!.contains("select timeout"))
     }
 }
